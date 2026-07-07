@@ -5,10 +5,21 @@ import { Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { Logo } from '../../components/ui/Logo'
 import { firebaseConfirmReset } from '../../lib/firebase'
 
+function getNestedResetCode(continueUrl: string) {
+  if (!continueUrl) return ''
+  try {
+    return new URL(continueUrl).searchParams.get('oobCode') ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export default function ResetPassword() {
   const [params]    = useSearchParams()
   const navigate    = useNavigate()
-  const oobCode     = params.get('oobCode') ?? ''
+  const continueUrl = params.get('continueUrl') ?? ''
+  const nestedCode  = getNestedResetCode(continueUrl)
+  const oobCode     = params.get('oobCode') ?? nestedCode ?? ''
 
   const [password,  setPassword]  = useState('')
   const [confirm,   setConfirm]   = useState('')

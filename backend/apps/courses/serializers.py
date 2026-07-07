@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Semester, Subject, StudyMaterial, StudentSemesterEnrollment, LearningResource, PlannerTask, YouTubeResource
+from .models import Semester, Subject, StudyMaterial, StudentSemesterEnrollment, LearningResource, PlannerTask, YouTubeResource, VideoFolder
 
 
 class SubjectSerializer(serializers.ModelSerializer):
@@ -41,7 +41,6 @@ class StudyMaterialSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         url = obj.file_url or ''
-        # Ensure Cloudinary raw uploads are served inline (viewable in browser)
         if 'cloudinary.com' in url and '/raw/upload/' in url:
             if 'fl_attachment:false,fl_inline' not in url:
                 url = url.replace('/raw/upload/', '/raw/upload/fl_attachment:false,fl_inline/')
@@ -67,11 +66,25 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'enrolled_at', 'student']
 
 
+class VideoFolderSerializer(serializers.ModelSerializer):
+    video_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VideoFolder
+        fields = ['id', 'name', 'color', 'video_count', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_video_count(self, obj):
+        return obj.videos.count()
+
+
 class YouTubeResourceSerializer(serializers.ModelSerializer):
+    folder_name = serializers.CharField(source='folder.name', read_only=True, default=None)
+
     class Meta:
         model = YouTubeResource
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'added_by']
+        read_only_fields = ['id', 'created_at', 'added_by', 'youtube_id', 'title', 'thumbnail', 'channel', 'duration', 'view_count']
 
 
 class PlannerTaskSerializer(serializers.ModelSerializer):

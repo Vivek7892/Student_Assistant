@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from django.utils import timezone
 from apps.accounts.models import User
 
 
@@ -113,17 +114,43 @@ class LearningResource(models.Model):
         db_table = 'learning_resources'
 
 
+class VideoFolder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='video_folders')
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=20, default='primary')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'video_folders'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class YouTubeResource(models.Model):
+    class Status(models.TextChoices):
+        SAVED = 'saved', 'Saved'
+        WATCHING = 'watching', 'Watching'
+        COMPLETED = 'completed', 'Completed'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='youtube_resources')
     added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    folder = models.ForeignKey(VideoFolder, on_delete=models.SET_NULL, null=True, blank=True, related_name='videos')
     youtube_id = models.CharField(max_length=20)
     title = models.CharField(max_length=500)
     thumbnail = models.URLField()
     channel = models.CharField(max_length=200, blank=True)
-    duration = models.CharField(max_length=20, blank=True)  # e.g. "12:34"
+    duration = models.CharField(max_length=20, blank=True)
     view_count = models.BigIntegerField(default=0)
     url = models.URLField()
+    notes = models.TextField(blank=True, default='')
+    tags = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SAVED)
+    is_favorite = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -156,8 +183,22 @@ class PlannerTask(models.Model):
     color = models.CharField(max_length=20, default='primary')
     done = models.BooleanField(default=False)
     due_date = models.DateField(null=True, blank=True)
+    google_calendar_url = models.URLField(blank=True, default='')
+    google_event_id = models.CharField(max_length=255, blank=True, default='')
+    google_synced_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'planner_tasks'
         ordering = ['day', 'start_hour']
+        indexes = [
+            models.Index(fields=['user', 'day', 'start_hour'], name='planner_user_day_hour'),
+            models.Index(fields=['user', 'google_synced_at'], name='planner_user_gcal_sync'),
+        ]
+
+    def mark_google_synced(self, calendar_url: str, event_id: str = ''):
+        self.google_calendar_url = calendar_url
+        self.google_event_id = event_id
+        self.google_synced_at = timezone.now()
+        self.save(update_fields=['google_calendar_url', 'google_event_id', 'google_synced_at', 'updated_at'])

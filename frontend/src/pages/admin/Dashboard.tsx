@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts'
-import { Users, MessageSquare, Zap, FileText, Shield } from 'lucide-react'
+import { Users, MessageSquare, Zap, FileText, Shield, Flame } from 'lucide-react'
 import { Card, Badge, Skeleton } from '../../components/ui'
 import { api } from '../../lib/api'
 
@@ -32,15 +32,21 @@ export default function AdminDashboard() {
     { label: 'AI Requests Today', value: stats?.ai_requests_today  ?? '—', icon: Zap,           color: 'text-amber-500',   bg: 'bg-amber-400/10'   },
   ]
 
-  const usersByRole = (data?.users_by_role ?? []).map((r: any, i: number) => ({
+  const usersByRole      = (data?.users_by_role ?? []).map((r: any, i: number) => ({
     name:  r.role.charAt(0).toUpperCase() + r.role.slice(1),
     value: r.count,
     color: PIE_COLORS[i % PIE_COLORS.length],
   }))
 
-  const materialsByType = (data?.materials_by_type ?? []).map((m: any) => ({
+  const materialsByType  = (data?.materials_by_type ?? []).map((m: any) => ({
     type:  m.material_type.charAt(0).toUpperCase() + m.material_type.slice(1),
     count: m.count,
+  }))
+
+  const platformActivity = (data?.platform_activity ?? []).map((p: any) => ({
+    date:     p.date?.slice(5),   // MM-DD
+    sessions: p.total_sessions ?? 0,
+    quizzes:  p.total_quizzes  ?? 0,
   }))
 
   return (
@@ -75,6 +81,27 @@ export default function AdminDashboard() {
             </Card>
           ))
         }
+      </motion.div>
+
+      {/* Platform activity chart */}
+      <motion.div variants={fadeUp}>
+        <Card className="p-5">
+          <h3 className="font-display font-semibold text-[var(--text-1)] mb-4">Platform Activity (Last 30 Days)</h3>
+          {loading ? <Skeleton className="h-48 rounded-xl" /> : platformActivity.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={platformActivity}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} interval={4} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--text-3)' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }} />
+                <Line type="monotone" dataKey="sessions" stroke="oklch(55% 0.26 290)" strokeWidth={2} dot={false} name="AI Sessions" />
+                <Line type="monotone" dataKey="quizzes" stroke="oklch(70% 0.20 162)" strokeWidth={2} dot={false} name="Quizzes" />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-sm text-[var(--text-3)]">No activity yet</div>
+          )}
+        </Card>
       </motion.div>
 
       {/* Charts */}
@@ -149,6 +176,11 @@ export default function AdminDashboard() {
                 <span className="text-xs text-[var(--text-3)]">{u.chat_sessions} chats</span>
               </div>
               {!u.is_verified && <div className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Unverified" />}
+              {u.streak > 0 && (
+                <span className="flex items-center gap-0.5 text-xs text-amber-500 shrink-0">
+                  <Flame size={11} /> {u.streak}
+                </span>
+              )}
             </div>
           ))}
         </Card>

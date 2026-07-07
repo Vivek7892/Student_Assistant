@@ -30,6 +30,8 @@ interface Task {
   color: string
   done: boolean
   subject_label?: string
+  google_calendar_url?: string
+  google_synced_at?: string | null
 }
 
 interface TaskForm {
@@ -124,15 +126,42 @@ export default function Planner() {
     api.delete(`/api/courses/planner/${id}/`).catch(() => {})
   }
 
-  // Export ALL tasks to Google Calendar (opens each in new tab)
-  function exportAllToGoogle() {
+  // Persist sync metadata, then open Google Calendar event tabs.
+  async function exportAllToGoogle() {
     setSyncing(true)
     const pending = tasks.filter(t => !t.done)
     if (pending.length === 0) { setSyncing(false); return }
-    // Open first one directly, rest via confirm
-    const urls = pending.map(t => taskToGoogleCalendarUrl(t, weekStart))
-    urls.forEach((url, i) => setTimeout(() => window.open(url, '_blank'), i * 300))
-    setTimeout(() => { setSyncing(false); setSyncDone(true); setTimeout(() => setSyncDone(false), 3000) }, urls.length * 300 + 200)
+    try {
+      const r = await api.post('/api/courses/planner/sync-google-calendar/', {
+        week_start: weekStart.toISOString().slice(0, 10),
+      })
+      const synced: Task[] = r.data?.items ?? []
+      setTasks(prev => prev.map(task => synced.find(item => item.id === task.id) ?? task))
+      synced.forEach((task, i) => {
+        const url = task.google_calendar_url || taskToGoogleCalendarUrl(task, weekStart)
+        setTimeout(() => window.open(url, '_blank'), i * 300)
+      })
+      setSyncDone(true)
+      setTimeout(() => setSyncDone(false), 3000)
+    } catch {
+      pending.forEach((task, i) => setTimeout(() => window.open(taskToGoogleCalendarUrl(task, weekStart), '_blank'), i * 300))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function syncOneToGoogle(task: Task, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    try {
+      const r = await api.post(`/api/courses/planner/${task.id}/sync-google-calendar/`, {
+        week_start: weekStart.toISOString().slice(0, 10),
+      })
+      const updated = r.data
+      setTasks(prev => prev.map(item => item.id === task.id ? updated : item))
+      window.open(updated.google_calendar_url || taskToGoogleCalendarUrl(task, weekStart), '_blank')
+    } catch {
+      window.open(taskToGoogleCalendarUrl(task, weekStart), '_blank')
+    }
   }
 
   const tasksByDayHour = (day: string, hour: number) =>
@@ -206,8 +235,8 @@ export default function Planner() {
                           {task.subject_label && <p className="text-[10px] opacity-70 truncate mt-0.5 pl-2.5">{task.subject_label}</p>}
                           <div className="absolute right-1 top-1 hidden group-hover:flex gap-0.5">
                             <button onClick={() => toggleTask(task.id)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10"><Check size={10} /></button>
-                            <a href={taskToGoogleCalendarUrl(task, weekStart)} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-blue-500/20 text-blue-500"><ExternalLink size={10} /></a>
+                            <button onClick={(e) => syncOneToGoogle(task, e)}
+                              className="w-5 h-5 rounded flex items-center justify-center hover:bg-blue-500/20 text-blue-500"><ExternalLink size={10} /></button>
                             <button onClick={() => deleteTask(task.id)} className="w-5 h-5 rounded flex items-center justify-center hover:bg-rose-500/20 text-rose-500"><Trash2 size={10} /></button>
                           </div>
                         </div>
@@ -258,10 +287,10 @@ export default function Planner() {
                           task.done ? 'bg-emerald-400/10 text-emerald-500' : 'hover:bg-[var(--surface-2)] text-[var(--text-3)]')}>
                         <Check size={14} />
                       </button>
-                      <a href={taskToGoogleCalendarUrl(task, weekStart)} target="_blank" rel="noopener noreferrer"
+                      <button onClick={(e) => syncOneToGoogle(task, e)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-blue-500/10 text-blue-500">
                         <ExternalLink size={13} />
-                      </a>
+                      </button>
                       <button onClick={() => deleteTask(task.id)}
                         className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-rose-500/10 text-rose-500">
                         <Trash2 size={13} />

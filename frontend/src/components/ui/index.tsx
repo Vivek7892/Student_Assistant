@@ -36,7 +36,7 @@ export function Badge({ color = 'primary', children, className }: BadgeProps) {
 
 // ── Button ────────────────────────────────────────────────────────────────────
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'gradient'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'gradient' | 'outline'
   size?: 'sm' | 'md' | 'lg'
 }
 export function Button({ variant = 'primary', size = 'md', className, children, ...props }: ButtonProps) {
@@ -47,6 +47,7 @@ export function Button({ variant = 'primary', size = 'md', className, children, 
     secondary: 'bg-[var(--surface-2)] text-[var(--text-1)] border border-[var(--border)] hover:bg-[var(--surface)] active:scale-95',
     ghost:     'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text-1)] active:scale-95',
     gradient:  'bg-gradient-primary text-white shadow-glass hover:shadow-lift active:scale-95',
+    outline:   'border border-[var(--border)] text-[var(--text-1)] hover:bg-[var(--surface-2)] active:scale-95',
   }
   return (
     <motion.button

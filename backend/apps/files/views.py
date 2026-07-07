@@ -279,6 +279,26 @@ class FileUploadView(APIView):
         if cloudinary_url:
             public_url   = cloudinary_url
             storage_used = 'cloudinary'
+            # Store PDF metadata in MongoDB for fast lookup
+            try:
+                from core.mongo import store_pdf_metadata
+                # Extract public_id from cloudinary URL
+                cld_public_id = ''
+                if '/upload/' in cloudinary_url:
+                    part = cloudinary_url.split('/upload/', 1)[1]
+                    if part.startswith('v') and '/' in part:
+                        part = part.split('/', 1)[1]
+                    cld_public_id = part.rsplit('.', 1)[0]
+                store_pdf_metadata(
+                    material_id='pending',  # updated after material creation
+                    user_id=str(request.user.id),
+                    cloudinary_url=cloudinary_url,
+                    public_id=cld_public_id,
+                    file_name=file.name,
+                    file_size=len(file_content),
+                )
+            except Exception:
+                pass
 
         # ── 2. Try Drive if connected and Cloudinary not used ─────────────────
         if public_url is None:
@@ -339,6 +359,33 @@ class FileUploadView(APIView):
         )
 
         _process_material_sync(material, local_file_path=_local_path_for(public_url))
+
+        # Update MongoDB pdf_metadata with real material_id
+        if storage_used == 'cloudinary':
+            try:
+                from core.mongo import store_pdf_metadata
+                cld_public_id = ''
+                if '/upload/' in public_url:
+                    part = public_url.split('/upload/', 1)[1]
+                    if part.startswith('v') and '/' in part:
+                        part = part.split('/', 1)[1]
+                    cld_public_id = part.rsplit('.', 1)[0]
+                store_pdf_metadata(
+                    material_id=str(material.id),
+                    user_id=str(request.user.id),
+                    cloudinary_url=public_url,
+                    public_id=cld_public_id,
+                    file_name=file.name,
+                    file_size=len(file_content),
+                )
+            except Exception:
+                pass
+
+        try:
+            from core.activity import record_activity
+            record_activity(request.user, 'document_upload')
+        except Exception:
+            pass
 
         return Response({
             'id':          str(uploaded.id),
@@ -711,7 +758,7 @@ class FileProxyView(APIView):
     def get(self, request, material_id):
         from apps.courses.models import StudyMaterial
         try:
-            material = StudyMaterial.objects.get(id=material_id)
+            material = StudyMaterial.objects.get(id=material_id, uploaded_by=request.user)
         except StudyMaterial.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -724,7 +771,10 @@ class FileProxyView(APIView):
             from django.http import StreamingHttpResponse
             resp = _req.get(file_url, stream=True, timeout=30)
             resp.raise_for_status()
-            content_type = resp.headers.get('Content-Type', 'application/pdf')
+            guessed = mimetypes.guess_type(material.file_name or '')[0]
+            content_type = resp.headers.get('Content-Type') or guessed or 'application/octet-stream'
+            if 'application/octet-stream' in content_type and guessed:
+                content_type = guessed
             # Force inline so browser renders instead of downloading
             streaming = StreamingHttpResponse(
                 resp.iter_content(chunk_size=8192),

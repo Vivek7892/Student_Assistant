@@ -17,7 +17,8 @@ export const auth = getAuth(app)
 
 export async function firebaseSendReset(email: string) {
   await sendPasswordResetEmail(auth, email, {
-    url: `${window.location.origin}/login`,
+    url: `${window.location.origin}/reset-password`,
+    handleCodeInApp: true,
   })
 }
 

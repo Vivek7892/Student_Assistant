@@ -1,9 +1,10 @@
 services:
+  # ── Backend (Django) ────────────────────────────────────────────────────────
   - type: web
     name: eduai-backend
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate --noinput
     startCommand: gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 2
     envVars:
       - key: DEBUG
@@ -12,32 +13,84 @@ services:
         generateValue: true
       - key: ALLOWED_HOSTS
         value: ".onrender.com"
-      - key: CORS_ALLOWED_ORIGINS
-        value: "https://your-app.vercel.app"
-      - key: FRONTEND_URL
-        value: "https://your-app.vercel.app"
       - key: DATABASE_URL
         fromDatabase:
           name: eduai-db
           property: connectionString
       - key: REDIS_URL
-        sync: false
+        fromService:
+          name: eduai-redis
+          type: redis
+          property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://eduai-frontend.onrender.com"   # update to your frontend URL
+      - key: FRONTEND_URL
+        value: "https://eduai-frontend.onrender.com"   # update to your frontend URL
       - key: GEMINI_API_KEY
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: student_assistant
+      - key: YOUTUBE_API_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: MONGO_URI
+      - key: EMAIL_HOST_USER
         sync: false
-      - key: MONGO_DB_NAME
+      - key: EMAIL_HOST_PASSWORD
         sync: false
-      - key: JWT_ACCESS_TOKEN_LIFETIME
-        value: "60"
-      - key: JWT_REFRESH_TOKEN_LIFETIME
-        value: "30"
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CHROMA_PERSIST_DIR
+        value: /opt/render/project/src/chroma_db
+
+  # ── Frontend (React static site) ───────────────────────────────────────────
+  - type: web
+    name: eduai-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://eduai-backend.onrender.com/api/$1
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: "https://eduai-backend.onrender.com"
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_YOUTUBE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
 
 databases:
   - name: eduai-db
     databaseName: student_assistant
-    user: eduai
+    plan: free
+
+  - name: eduai-redis
+    type: redis
+    plan: free
+    ipAllowList: []

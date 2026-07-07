@@ -10,6 +10,7 @@ import ForgotPassword  from './pages/auth/ForgotPassword'
 import ResetPassword   from './pages/auth/ResetPassword'
 import Dashboard       from './pages/app/Dashboard'
 import AITutor         from './pages/app/AITutor'
+import Videos          from './pages/app/Videos'
 import Courses         from './pages/app/Courses'
 import Documents       from './pages/app/Documents'
 import Flashcards      from './pages/app/Flashcards'
@@ -40,6 +41,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="ai"            element={<AITutor />} />
           <Route path="ai/c/:sessionId" element={<AITutor />} />
+          <Route path="videos"        element={<Videos />} />
           <Route path="courses"       element={<Courses />} />
           <Route path="documents"     element={<Documents />} />
           <Route path="flashcards"    element={<Flashcards />} />

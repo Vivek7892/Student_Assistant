@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText, Music, File, Sparkles, Upload, Search, Trash2,
   CheckCircle2, FolderOpen, Folder, Tag, X, Eye, Download,
-  Plus, HardDrive, RefreshCw, ExternalLink, Unlink,
+  Plus, HardDrive, RefreshCw, ExternalLink, Unlink, AlertCircle,
 } from 'lucide-react'
 import { Card, Badge, Button, Input, Skeleton } from '../../components/ui'
 import { api } from '../../lib/api'
@@ -26,70 +26,95 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function TxtViewer({ url }: { url: string }) {
-  const [text, setText] = useState<string | null>(null)
-  const [err,  setErr]  = useState(false)
-  useEffect(() => {
-    fetch(url)
-      .then(r => r.text())
-      .then(setText)
-      .catch(() => setErr(true))
-  }, [url])
-  if (err) return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--text-3)]">
-      <FileText size={32} />
-      <p className="text-sm">Could not load file. <a href={url} target="_blank" rel="noopener noreferrer" className="text-primary-500 underline">Open in new tab</a></p>
-    </div>
-  )
-  if (!text) return <div className="flex items-center justify-center h-full"><div className="w-6 h-6 border-2 border-primary-400 border-t-transparent rounded-full animate-spin" /></div>
-  return (
-    <pre className="w-full h-full overflow-auto p-6 text-sm text-[var(--text-1)] font-mono leading-relaxed whitespace-pre-wrap break-words">
-      {text}
-    </pre>
-  )
-}
-
 function DocViewer({ doc }: { doc: any }) {
   const fileUrl: string = doc.file_url ?? ''
   const fileType: string = doc.file_type?.toLowerCase() ?? ''
-  const [useFallback, setUseFallback] = useState(false)
+  const [blobUrl, setBlobUrl] = useState('')
+  const [text, setText] = useState('')
+  const [loadingPreview, setLoadingPreview] = useState(true)
+  const [error, setError] = useState('')
 
-  // For PDFs: use Google Docs Viewer (most reliable, no CORS/X-Frame issues)
-  // For DOCX/PPTX: Google Docs Viewer also works
-  // For local files: embed directly
-  const isCloudinary = fileUrl.includes('cloudinary.com')
-  const isDrive = fileUrl.includes('drive.google.com')
-  const isRemote = fileUrl.startsWith('http') && !fileUrl.includes(window.location.hostname)
+  const canRenderBlob = ['pdf', 'txt', 'audio', 'mp3', 'wav'].includes(fileType)
+  const officePreview = ['doc', 'docx', 'ppt', 'pptx'].includes(fileType)
+    ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
+    : ''
 
-  let iframeSrc: string
-  if (useFallback) {
-    iframeSrc = `/api/files/proxy/${doc.id}/`
-  } else if (isRemote && (fileType === 'pdf' || fileType === 'docx' || fileType === 'pptx')) {
-    // Google Docs Viewer handles PDFs/DOCX/PPTX from any URL
-    iframeSrc = `https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`
-  } else if (isRemote) {
-    iframeSrc = `/api/files/proxy/${doc.id}/`
-  } else {
-    iframeSrc = fileUrl
+  useEffect(() => {
+    let alive = true
+    let nextUrl = ''
+    setBlobUrl('')
+    setText('')
+    setError('')
+    setLoadingPreview(true)
+
+    async function loadPreview() {
+      try {
+        if (canRenderBlob) {
+          const res = await api.get(`/api/files/proxy/${doc.id}/`, { responseType: 'blob' })
+          if (!alive) return
+          const blob = new Blob([res.data], { type: res.headers['content-type'] || res.data.type || 'application/octet-stream' })
+          if (fileType === 'txt') {
+            setText(await blob.text())
+          } else {
+            nextUrl = URL.createObjectURL(blob)
+            setBlobUrl(nextUrl)
+          }
+        }
+      } catch {
+        if (alive) setError('Could not load an authenticated preview for this file.')
+      } finally {
+        if (alive) setLoadingPreview(false)
+      }
+    }
+
+    loadPreview()
+    return () => {
+      alive = false
+      if (nextUrl) URL.revokeObjectURL(nextUrl)
+    }
+  }, [doc.id, fileType, canRenderBlob])
+
+  if (loadingPreview && canRenderBlob) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--text-2)]">
+          <RefreshCw size={16} className="animate-spin text-primary-500" />
+          Loading preview
+        </div>
+      </div>
+    )
+  }
+
+  if (fileType === 'txt' && text) {
+    return (
+      <pre className="h-full w-full overflow-auto p-4 text-sm leading-relaxed text-[var(--text-1)] sm:p-6 font-mono whitespace-pre-wrap break-words">
+        {text}
+      </pre>
+    )
+  }
+
+  if (['audio', 'mp3', 'wav'].includes(fileType) && blobUrl) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <audio controls src={blobUrl} className="w-full max-w-xl" />
+      </div>
+    )
   }
 
   return (
     <div className="relative w-full h-full">
-      <iframe
-        key={iframeSrc}
-        src={iframeSrc}
-        className="w-full h-full border-0"
-        title={doc.title}
-        onError={() => !useFallback && setUseFallback(true)}
-      />
+      {fileType === 'pdf' && blobUrl ? (
+        <iframe key={blobUrl} src={blobUrl} className="h-full w-full border-0" title={doc.title} />
+      ) : officePreview ? (
+        <iframe key={officePreview} src={officePreview} className="h-full w-full border-0" title={doc.title} />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-[var(--text-3)]">
+          <AlertCircle size={34} />
+          <p className="max-w-sm text-sm">{error || 'This file type cannot be previewed directly in the browser.'}</p>
+          <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary-500 underline">Open original</a>
+        </div>
+      )}
       <div className="absolute bottom-3 right-3 flex items-center gap-2">
-        {!useFallback && isRemote && (
-          <button
-            onClick={() => setUseFallback(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs hover:bg-black/80 transition-colors">
-            Proxy
-          </button>
-        )}
         <a href={fileUrl} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 text-white text-xs hover:bg-black/80 transition-colors">
           <ExternalLink size={11} /> Open original
@@ -524,11 +549,7 @@ export default function Documents() {
 
                 {/* Viewer body */}
                 <div className="flex-1 overflow-hidden bg-neutral-100 dark:bg-neutral-900">
-                  {viewDoc.file_type === 'txt' ? (
-                    <TxtViewer url={viewDoc.file_url} />
-                  ) : (
-                    <DocViewer doc={viewDoc} />
-                  )}
+                  <DocViewer doc={viewDoc} />
                 </div>
               </motion.div>
             </>

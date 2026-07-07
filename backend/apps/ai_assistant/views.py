@@ -191,6 +191,11 @@ class ChatSessionViewSet(viewsets.ViewSet):
             tokens_used=tokens, model_used=model,
             metadata={'session_id': session_id},
         )
+        try:
+            from core.activity import record_activity
+            record_activity(request.user, 'ai_session')
+        except Exception:
+            pass
         return Response({'session_id': session_id, 'user_message': user_msg, 'assistant_message': assistant_msg})
 
 
@@ -290,6 +295,21 @@ class QuizViewSet(viewsets.ModelViewSet):
             total_questions=total,
             time_taken_seconds=time_taken,
         )
+        # Update SubjectMastery
+        try:
+            from apps.analytics.models import SubjectMastery
+            from core.activity import record_activity
+            mastery, _ = SubjectMastery.objects.get_or_create(
+                user=request.user, subject=quiz.subject
+            )
+            mastery.attempts += 1
+            mastery.avg_score = (
+                (mastery.avg_score * (mastery.attempts - 1) + round(score, 2)) / mastery.attempts
+            )
+            mastery.save(update_fields=['attempts', 'avg_score'])
+            record_activity(request.user, 'quiz_attempt')
+        except Exception:
+            pass
         return Response(QuizAttemptSerializer(attempt).data, status=status.HTTP_201_CREATED)
 
 
@@ -346,6 +366,11 @@ class FlashcardViewSet(viewsets.ModelViewSet):
                 is_ai_generated=True,
             )
             AIUsageLog.objects.create(user=request.user, action='generate_flashcards')
+            try:
+                from core.activity import record_activity
+                record_activity(request.user, 'flashcard_review')
+            except Exception:
+                pass
             return Response(FlashcardSerializer(flashcard).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f'Flashcard generation error: {e}', exc_info=True)

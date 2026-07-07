@@ -24,7 +24,7 @@ const navGroups = [
   {
     label: 'Study',
     items: [
-      { label: 'Videos',     icon: Youtube,      to: '/app/courses' },
+      { label: 'Videos',     icon: Youtube,      to: '/app/videos' },
       { label: 'Documents',  icon: FileText,     to: '/app/documents', hasDrive: true },
       { label: 'Flashcards', icon: CreditCard,   to: '/app/flashcards' },
       { label: 'Quizzes',    icon: Brain,        to: '/app/quizzes' },

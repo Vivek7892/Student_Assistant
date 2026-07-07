@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Bot, BookOpen, Brain, Zap, Star, ArrowRight, Check, GraduationCap, Flame, Sun, Moon, Youtube, Menu, X, MessageSquare, Layers } from 'lucide-react'
+import {
+  Bot, BookOpen, Brain, Zap, Star, ArrowRight, Check, GraduationCap, Flame,
+  Sun, Moon, Youtube, Menu, X, MessageSquare, Layers, CalendarDays,
+  FileText, BarChart3, PlaySquare, Sparkles, ShieldCheck, FolderOpen,
+} from 'lucide-react'
 import { useTheme } from '../../store/themeStore'
 import { Logo } from '../../components/ui/Logo'
 
@@ -63,9 +67,25 @@ const colorBg: Record<string, string>   = { primary: 'bg-primary-100 dark:bg-pri
 const colorText: Record<string, string> = { primary: 'text-primary-500', emerald: 'text-emerald-500', amber: 'text-amber-500', cyan: 'text-cyan-500', rose: 'text-rose-500' }
 
 const NAV_LINKS = [
+  { label: 'Quick links',   href: '#quick-links' },
   { label: 'Features',     href: '#features' },
   { label: 'How it works', href: '#how-it-works' },
   { label: 'Testimonials', href: '#testimonials' },
+]
+
+const quickLinks = [
+  { icon: Bot, title: 'Ask AI Tutor', desc: 'Chat with your own documents and notes.', href: '/app/ai-tutor', color: 'primary' },
+  { icon: FileText, title: 'Preview Docs', desc: 'Open PDFs, slides, notes, and summaries.', href: '/app/documents', color: 'cyan' },
+  { icon: PlaySquare, title: 'Watch Later', desc: 'Save YouTube lessons with tags and folders.', href: '/app/videos', color: 'rose' },
+  { icon: CalendarDays, title: 'Planner', desc: 'Schedule study sessions and sync Calendar.', href: '/app/planner', color: 'emerald' },
+  { icon: BarChart3, title: 'Health Dashboard', desc: 'Track streaks, progress, and activity.', href: '/app/analytics', color: 'amber' },
+  { icon: Brain, title: 'Flashcards', desc: 'Review smarter with repetition workflows.', href: '/app/flashcards', color: 'primary' },
+]
+
+const workspaceHighlights = [
+  { icon: FolderOpen, title: 'Organized Study Hub', body: 'Keep documents, YouTube lessons, folders, notes, tags, and study tasks in one place.' },
+  { icon: Sparkles, title: 'AI That Uses Your Material', body: 'Generate summaries, explanations, flashcards, and quizzes from the content you upload.' },
+  { icon: ShieldCheck, title: 'Built For Student Workflow', body: 'Fast previews, clean dashboards, responsive layouts, and practical tools for daily study.' },
 ]
 
 export default function Landing() {
@@ -159,7 +179,7 @@ export default function Landing() {
             </a>
           </motion.div>
           <motion.div variants={fadeUp} className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-sm text-[var(--text-3)]">
-            {['No credit card required', '14-day free trial', 'Cancel anytime'].map(t => (
+            {['AI tutor', 'Document previews', 'YouTube Watch Later', 'Calendar sync'].map(t => (
               <span key={t} className="flex items-center gap-1.5"><Check size={13} className="text-emerald-500" /> {t}</span>
             ))}
           </motion.div>
@@ -263,6 +283,37 @@ export default function Landing() {
         </motion.div>
       </section>
 
+      {/* Quick links */}
+      <section id="quick-links" className="max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-14">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)]">Jump straight into study mode</h2>
+            <p className="text-[var(--text-2)] mt-2 max-w-2xl">Quick access to the tools students use every day inside StudyBuddy.</p>
+          </div>
+          <Link to="/register" className="inline-flex items-center gap-2 text-sm font-semibold text-primary-500 hover:underline">
+            Open workspace <ArrowRight size={14} />
+          </Link>
+        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {quickLinks.map((item, i) => (
+            <motion.div key={item.title} initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
+              <Link to={item.href} className="glass block rounded-2xl p-5 hover:shadow-glass transition-shadow">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${colorBg[item.color]}`}>
+                  <item.icon size={19} className={colorText[item.color]} />
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-display font-semibold text-[var(--text-1)]">{item.title}</h3>
+                    <p className="text-sm text-[var(--text-2)] mt-1 leading-relaxed">{item.desc}</p>
+                  </div>
+                  <ArrowRight size={16} className="mt-1 shrink-0 text-[var(--text-3)]" />
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
       {/* How it works */}
       <section id="how-it-works" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
@@ -315,6 +366,52 @@ export default function Landing() {
             </motion.div>
           ))}
         </div>
+      </section>
+
+      {/* Workspace highlights */}
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          className="glass rounded-3xl overflow-hidden"
+        >
+          <div className="grid lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="p-7 sm:p-10 border-b lg:border-b-0 lg:border-r border-[var(--border)]">
+              <span className="inline-flex items-center gap-2 rounded-full bg-primary-100 dark:bg-primary-900/30 px-3 py-1 text-xs font-semibold text-primary-600 dark:text-primary-300">
+                <Sparkles size={13} /> Study workspace
+              </span>
+              <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)] mt-4">Everything connects around your actual learning flow.</h2>
+              <p className="text-[var(--text-2)] mt-4 leading-relaxed">
+                Upload materials, save videos, plan sessions, ask AI, and watch your health dashboard update as you study.
+              </p>
+              <div className="mt-6 grid grid-cols-3 gap-3">
+                {[
+                  ['Docs', 'PDF/DOCX'],
+                  ['Videos', 'Watch Later'],
+                  ['Calendar', 'Sync'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                    <p className="font-display text-lg font-bold text-[var(--text-1)]">{label}</p>
+                    <p className="text-xs text-[var(--text-3)]">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="p-5 sm:p-7 space-y-3">
+              {workspaceHighlights.map(({ icon: Icon, title, body }, i) => (
+                <motion.div key={title} initial={{ opacity: 0, x: 18 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex gap-4"
+                >
+                  <div className="h-10 w-10 shrink-0 rounded-xl bg-gradient-primary flex items-center justify-center">
+                    <Icon size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-semibold text-[var(--text-1)]">{title}</h3>
+                    <p className="text-sm text-[var(--text-2)] mt-1 leading-relaxed">{body}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
       </section>
 
       {/* Testimonials */}

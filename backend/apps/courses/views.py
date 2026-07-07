@@ -4,12 +4,16 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.conf import settings
+from django.utils import timezone
 import requests, re
+from datetime import datetime, timedelta, timezone as dt_timezone
+from urllib.parse import urlencode
 from apps.accounts.permissions import IsAdmin, IsTeacherOrAdmin
-from .models import Semester, Subject, StudyMaterial, StudentSemesterEnrollment, LearningResource, PlannerTask, YouTubeResource
+from .models import Semester, Subject, StudyMaterial, StudentSemesterEnrollment, LearningResource, PlannerTask, YouTubeResource, VideoFolder
 from .serializers import (
     SemesterSerializer, SubjectSerializer, StudyMaterialSerializer,
-    EnrollmentSerializer, LearningResourceSerializer, PlannerTaskSerializer, YouTubeResourceSerializer
+    EnrollmentSerializer, LearningResourceSerializer, PlannerTaskSerializer,
+    YouTubeResourceSerializer, VideoFolderSerializer
 )
 
 
@@ -115,17 +119,68 @@ class LearningResourceViewSet(viewsets.ModelViewSet):
         serializer.save(added_by=self.request.user)
 
 
-class YouTubeResourceViewSet(viewsets.ModelViewSet):
-    serializer_class = YouTubeResourceSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['subject']
+class VideoFolderViewSet(viewsets.ModelViewSet):
+    serializer_class = VideoFolderSerializer
 
     def get_queryset(self):
-        # Return all youtube resources for subjects the user can see
-        return YouTubeResource.objects.filter(added_by=self.request.user)
+        return VideoFolder.objects.filter(owner=self.request.user)
 
     def perform_create(self, serializer):
-        serializer.save(added_by=self.request.user)
+        serializer.save(owner=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        folder = self.get_object()
+        move_to = request.data.get('move_to')  # optional folder id to move videos into
+        if move_to:
+            try:
+                target = VideoFolder.objects.get(id=move_to, owner=request.user)
+                folder.videos.all().update(folder=target)
+            except VideoFolder.DoesNotExist:
+                folder.videos.all().update(folder=None)
+        else:
+            folder.videos.all().update(folder=None)
+        folder.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class YouTubeResourceViewSet(viewsets.ModelViewSet):
+    serializer_class = YouTubeResourceSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['subject', 'folder', 'status', 'is_favorite']
+    search_fields = ['title', 'channel', 'notes', 'tags']
+
+    def get_queryset(self):
+        return YouTubeResource.objects.filter(added_by=self.request.user).select_related('folder')
+
+    def perform_create(self, serializer):
+        url = serializer.validated_data.get('url', '')
+        yt_id = self._extract_id(url)
+        if not yt_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'url': 'Invalid YouTube URL'})
+        meta = self._fetch_meta(yt_id)
+        serializer.save(
+            added_by=self.request.user,
+            youtube_id=yt_id,
+            title=meta['title'],
+            thumbnail=meta['thumbnail'],
+            channel=meta['channel'],
+            duration=meta['duration'],
+            view_count=meta['view_count'],
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='preview')
+    def preview(self, request):
+        url = request.query_params.get('url', '')
+        yt_id = self._extract_id(url)
+        if not yt_id:
+            return Response({'error': 'Invalid YouTube URL'}, status=status.HTTP_400_BAD_REQUEST)
+        meta = self._fetch_meta(yt_id)
+        return Response({**meta, 'youtube_id': yt_id, 'url': f'https://www.youtube.com/watch?v={yt_id}'})
 
     def _extract_id(self, url):
         m = re.search(r'(?:v=|youtu\.be/|embed/)([\w-]{11})', url)
@@ -134,7 +189,7 @@ class YouTubeResourceViewSet(viewsets.ModelViewSet):
     def _fetch_meta(self, yt_id):
         api_key = getattr(settings, 'YOUTUBE_API_KEY', '')
         if not api_key:
-            return {'title': yt_id, 'thumbnail': f'https://img.youtube.com/vi/{yt_id}/mqdefault.jpg', 'channel': '', 'duration': '', 'view_count': 0}
+            return self._fetch_oembed_meta(yt_id)
         resp = requests.get(
             'https://www.googleapis.com/youtube/v3/videos',
             params={'id': yt_id, 'part': 'snippet,contentDetails,statistics', 'key': api_key},
@@ -144,15 +199,33 @@ class YouTubeResourceViewSet(viewsets.ModelViewSet):
         if not items:
             return {'title': yt_id, 'thumbnail': f'https://img.youtube.com/vi/{yt_id}/mqdefault.jpg', 'channel': '', 'duration': '', 'view_count': 0}
         item = items[0]
-        raw_dur = item['contentDetails']['duration']  # PT12M34S
-        duration = self._parse_duration(raw_dur)
         return {
             'title':      item['snippet']['title'],
             'thumbnail':  item['snippet']['thumbnails'].get('medium', {}).get('url', f'https://img.youtube.com/vi/{yt_id}/mqdefault.jpg'),
             'channel':    item['snippet']['channelTitle'],
-            'duration':   duration,
+            'duration':   self._parse_duration(item['contentDetails']['duration']),
             'view_count': int(item['statistics'].get('viewCount', 0)),
         }
+
+    def _fetch_oembed_meta(self, yt_id):
+        try:
+            url = f'https://www.youtube.com/watch?v={yt_id}'
+            resp = requests.get(
+                'https://www.youtube.com/oembed',
+                params={'url': url, 'format': 'json'},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                'title': data.get('title') or yt_id,
+                'thumbnail': data.get('thumbnail_url') or f'https://img.youtube.com/vi/{yt_id}/mqdefault.jpg',
+                'channel': data.get('author_name') or '',
+                'duration': '',
+                'view_count': 0,
+            }
+        except Exception:
+            return {'title': yt_id, 'thumbnail': f'https://img.youtube.com/vi/{yt_id}/mqdefault.jpg', 'channel': '', 'duration': '', 'view_count': 0}
 
     def _parse_duration(self, iso):
         m = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', iso)
@@ -160,9 +233,9 @@ class YouTubeResourceViewSet(viewsets.ModelViewSet):
             return ''
         h, mn, s = m.group(1), m.group(2), m.group(3)
         parts = []
-        if h:  parts.append(h.zfill(2))
+        if h: parts.append(h.zfill(2))
         parts.append((mn or '0').zfill(2))
-        parts.append((s  or '0').zfill(2))
+        parts.append((s or '0').zfill(2))
         return ':'.join(parts)
 
 
@@ -177,9 +250,58 @@ class PlannerTaskViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def _week_start(self, request):
+        raw = request.data.get('week_start') or request.query_params.get('week_start')
+        if raw:
+            try:
+                parsed = datetime.fromisoformat(raw).date()
+                return parsed - timedelta(days=parsed.weekday())
+            except ValueError:
+                pass
+        today = timezone.localdate()
+        return today - timedelta(days=today.weekday())
+
+    def _calendar_url(self, task, week_start):
+        day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        day_index = day_order.index(task.day) if task.day in day_order else 0
+        start_date = week_start + timedelta(days=day_index)
+        start = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+        start = start.replace(hour=task.start_hour, minute=0, second=0, microsecond=0)
+        end = start + timedelta(hours=task.duration or 1)
+        fmt = '%Y%m%dT%H%M%SZ'
+        title = task.title + (f' - {task.subject_label}' if task.subject_label else '')
+        params = urlencode({
+            'action': 'TEMPLATE',
+            'text': title,
+            'dates': f'{start.astimezone(dt_timezone.utc).strftime(fmt)}/{end.astimezone(dt_timezone.utc).strftime(fmt)}',
+            'details': f'Study session from StudyBuddy{chr(10) + "Subject: " + task.subject_label if task.subject_label else ""}',
+        })
+        return f'https://calendar.google.com/calendar/render?{params}'
+
     @action(detail=True, methods=['patch'])
     def toggle(self, request, pk=None):
         task = self.get_object()
         task.done = not task.done
-        task.save(update_fields=['done'])
+        task.save(update_fields=['done', 'updated_at'])
         return Response(PlannerTaskSerializer(task).data)
+
+    @action(detail=True, methods=['post'], url_path='sync-google-calendar')
+    def sync_google_calendar(self, request, pk=None):
+        task = self.get_object()
+        calendar_url = self._calendar_url(task, self._week_start(request))
+        task.mark_google_synced(calendar_url)
+        return Response(PlannerTaskSerializer(task).data)
+
+    @action(detail=False, methods=['post'], url_path='sync-google-calendar')
+    def sync_all_google_calendar(self, request):
+        week_start = self._week_start(request)
+        tasks = self.get_queryset().filter(done=False)
+        synced = []
+        for task in tasks:
+            calendar_url = self._calendar_url(task, week_start)
+            task.mark_google_synced(calendar_url)
+            synced.append(task)
+        return Response({
+            'count': len(synced),
+            'items': PlannerTaskSerializer(synced, many=True).data,
+        })

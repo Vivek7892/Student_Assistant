@@ -8,6 +8,7 @@ router.register('subjects', views.SubjectViewSet)
 router.register('materials', views.StudyMaterialViewSet, basename='material')
 router.register('resources', views.LearningResourceViewSet)
 router.register('youtube', views.YouTubeResourceViewSet, basename='youtube')
+router.register('video-folders', views.VideoFolderViewSet, basename='video-folder')
 router.register('planner', views.PlannerTaskViewSet, basename='planner')
 
 urlpatterns = [path('', include(router.urls))]

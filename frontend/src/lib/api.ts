@@ -1,9 +1,9 @@
 import axios from 'axios'
 import { useAuth } from '../store/authStore'
 
-// Empty baseURL = use Vite proxy (/api → http://localhost:8000)
+// Empty baseURL = use Vite proxy in dev; VITE_API_URL = backend URL in production
 export const api = axios.create({
-  baseURL: '',
+  baseURL: import.meta.env.VITE_API_URL ?? '',
   headers: { 'Content-Type': 'application/json' },
 })
 

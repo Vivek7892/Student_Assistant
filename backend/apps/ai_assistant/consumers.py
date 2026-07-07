@@ -251,6 +251,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _log_usage(self, tokens_used: int, model_name: str, session_id: str):
         from .models import AIUsageLog
+        from core.activity import record_activity
         AIUsageLog.objects.create(
             user=self.user,
             action='chat_ws',
@@ -258,6 +259,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             model_used=model_name,
             metadata={'session_id': session_id},
         )
+        try:
+            record_activity(self.user, 'ai_session')
+        except Exception:
+            pass
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

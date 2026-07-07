@@ -43,7 +43,7 @@ export default function Dashboard() {
     { label: 'Streak',        value: user?.student_profile?.streak ?? 0,             unit: 'd',   icon: Flame,  color: 'bg-amber-400/10 text-amber-500' },
   ]
 
-  const progressData = analytics?.monthly_progress ?? []
+  const progressData = analytics?.monthly_progress ?? analytics?.quiz_history ?? []
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6 max-w-7xl">
