@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
-from .models import User, StudentProfile, TeacherProfile
+from .models import User, StudentProfile, TeacherProfile, UserPreferences
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):
@@ -16,9 +16,15 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
         exclude = ['user']
 
 
+class UserPreferencesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserPreferences
+        exclude = ['user', 'id']
+
+
 class UserSerializer(serializers.ModelSerializer):
     student_profile = StudentProfileSerializer(read_only=True)
-    teacher_profile = TeacherProfileSerializer(read_only=True)
+    preferences = UserPreferencesSerializer(read_only=True)
     full_name = serializers.ReadOnlyField()
 
     class Meta:
@@ -26,7 +32,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'role', 'avatar', 'is_verified', 'oauth_provider',
-            'created_at', 'student_profile', 'teacher_profile',
+            'created_at', 'student_profile', 'preferences',
         ]
         read_only_fields = ['id', 'created_at', 'is_verified', 'oauth_provider']
 
@@ -34,6 +40,7 @@ class UserSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(choices=['student', 'admin'], default='student')
 
     class Meta:
         model = User
@@ -42,17 +49,12 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data['password'] != data.pop('confirm_password'):
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
-        role = data.get('role', User.Role.STUDENT)
-        if role == User.Role.ADMIN:
-            raise serializers.ValidationError({'role': 'Cannot self-register as admin'})
         return data
 
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
-        if user.role == User.Role.STUDENT:
-            StudentProfile.objects.create(user=user)
-        elif user.role == User.Role.TEACHER:
-            TeacherProfile.objects.create(user=user)
+        StudentProfile.objects.create(user=user)
+        UserPreferences.objects.create(user=user)
         return user
 
 
@@ -108,15 +110,13 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
     student_profile = StudentProfileSerializer(required=False)
-    teacher_profile = TeacherProfileSerializer(required=False)
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'avatar', 'student_profile', 'teacher_profile']
+        fields = ['first_name', 'last_name', 'avatar', 'student_profile']
 
     def update(self, instance, validated_data):
         student_data = validated_data.pop('student_profile', None)
-        teacher_data = validated_data.pop('teacher_profile', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -124,8 +124,4 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
             for attr, value in student_data.items():
                 setattr(instance.student_profile, attr, value)
             instance.student_profile.save()
-        if teacher_data and hasattr(instance, 'teacher_profile'):
-            for attr, value in teacher_data.items():
-                setattr(instance.teacher_profile, attr, value)
-            instance.teacher_profile.save()
         return instance

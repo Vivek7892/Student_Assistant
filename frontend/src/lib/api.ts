@@ -1,40 +1,47 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
-import { useAuthStore } from '@/store/authStore'
+import axios from 'axios'
+import { useAuth } from '../store/authStore'
 
-const api = axios.create({
-  baseURL: '/api',
+// Empty baseURL = use Vite proxy (/api → http://localhost:8000)
+export const api = axios.create({
+  baseURL: '',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
 })
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = useAuthStore.getState().tokens?.access
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
+api.interceptors.request.use((config) => {
+  const token = useAuth.getState().token
+  if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
+const AUTH_PATHS = ['/api/auth/login/', '/api/auth/register/', '/api/auth/token/refresh/']
+
+let _refreshing: Promise<string | null> | null = null
+
 api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
-      const refresh = useAuthStore.getState().tokens?.refresh
-      if (refresh) {
-        try {
-          const { data } = await axios.post('/api/auth/token/refresh/', { refresh })
-          useAuthStore.getState().setTokens({ ...useAuthStore.getState().tokens!, access: data.access })
-          originalRequest.headers.Authorization = `Bearer ${data.access}`
-          return api(originalRequest)
-        } catch {
-          useAuthStore.getState().logout()
-        }
+  (res) => res,
+  async (err) => {
+    const original = err.config
+    const url: string = original?.url ?? ''
+
+    if (AUTH_PATHS.some(p => url.includes(p))) {
+      return Promise.reject(err)
+    }
+
+    if (err.response?.status === 401 && !original._retry) {
+      original._retry = true
+      if (!_refreshing) {
+        _refreshing = useAuth.getState().refreshAccessToken().finally(() => { _refreshing = null })
+      }
+      const newToken = await _refreshing
+      if (newToken) {
+        original.headers.Authorization = `Bearer ${newToken}`
+        return api(original)
+      }
+      if (!window.location.pathname.startsWith('/login') &&
+          !window.location.pathname.startsWith('/register')) {
+        window.location.href = '/login'
       }
     }
-    return Promise.reject(error)
+    return Promise.reject(err)
   }
 )
-
-export default api

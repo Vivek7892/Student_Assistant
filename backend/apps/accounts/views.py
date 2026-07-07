@@ -13,7 +13,7 @@ from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     ChangePasswordSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, UpdateProfileSerializer,
-    CustomTokenObtainPairSerializer
+    CustomTokenObtainPairSerializer, UserPreferencesSerializer
 )
 
 User = get_user_model()
@@ -178,3 +178,22 @@ class ChangePasswordView(generics.GenericAPIView):
         request.user.set_password(serializer.validated_data['new_password'])
         request.user.save()
         return Response({'message': 'Password changed successfully'})
+
+
+class PreferencesView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserPreferencesSerializer
+
+    def get_object(self):
+        from .models import UserPreferences
+        prefs, _ = UserPreferences.objects.get_or_create(user=self.request.user)
+        return prefs
+
+    def put(self, request, *args, **kwargs):
+        return self.patch(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

@@ -1,28 +1,26 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { Theme } from '@/types'
 
 interface ThemeStore {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+  dark: boolean
+  toggle: () => void
 }
 
-export const useThemeStore = create<ThemeStore>()(
+export const useTheme = create<ThemeStore>()(
   persist(
     (set) => ({
-      theme: 'system',
-      setTheme: (theme) => {
-        set({ theme })
-        const root = window.document.documentElement
-        root.classList.remove('light', 'dark')
-        if (theme === 'system') {
-          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-          root.classList.add(systemDark ? 'dark' : 'light')
-        } else {
-          root.classList.add(theme)
-        }
-      },
+      dark: false,
+      toggle: () => set((s) => {
+        const next = !s.dark
+        document.documentElement.classList.toggle('dark', next)
+        return { dark: next }
+      }),
     }),
-    { name: 'theme-storage' }
+    {
+      name: 'studybuddy-theme',
+      onRehydrateStorage: () => (state) => {
+        if (state?.dark) document.documentElement.classList.add('dark')
+      },
+    }
   )
 )

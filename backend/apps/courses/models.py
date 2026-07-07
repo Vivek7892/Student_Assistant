@@ -66,6 +66,7 @@ class StudyMaterial(models.Model):
     file_size = models.BigIntegerField(default=0)
     file_type = models.CharField(max_length=20)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='uploaded_materials')
+    drive_file_id = models.CharField(max_length=100, blank=True, null=True)  # Google Drive file ID
     is_processed = models.BooleanField(default=False)
     vector_collection_id = models.CharField(max_length=255, blank=True, null=True)
     download_count = models.PositiveIntegerField(default=0)
@@ -110,3 +111,53 @@ class LearningResource(models.Model):
 
     class Meta:
         db_table = 'learning_resources'
+
+
+class YouTubeResource(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='youtube_resources')
+    added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    youtube_id = models.CharField(max_length=20)
+    title = models.CharField(max_length=500)
+    thumbnail = models.URLField()
+    channel = models.CharField(max_length=200, blank=True)
+    duration = models.CharField(max_length=20, blank=True)  # e.g. "12:34"
+    view_count = models.BigIntegerField(default=0)
+    url = models.URLField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'youtube_resources'
+        ordering = ['-created_at']
+        unique_together = ['subject', 'youtube_id']
+
+    def __str__(self):
+        return self.title
+
+
+class PlannerTask(models.Model):
+    class DayChoice(models.TextChoices):
+        MON = 'Mon', 'Monday'
+        TUE = 'Tue', 'Tuesday'
+        WED = 'Wed', 'Wednesday'
+        THU = 'Thu', 'Thursday'
+        FRI = 'Fri', 'Friday'
+        SAT = 'Sat', 'Saturday'
+        SUN = 'Sun', 'Sunday'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='planner_tasks')
+    subject = models.ForeignKey(Subject, on_delete=models.SET_NULL, null=True, blank=True, related_name='planner_tasks')
+    title = models.CharField(max_length=200)
+    subject_label = models.CharField(max_length=50, blank=True)  # display label
+    day = models.CharField(max_length=3, choices=DayChoice.choices)
+    start_hour = models.PositiveIntegerField()  # 8-19
+    duration = models.PositiveIntegerField(default=1)  # hours
+    color = models.CharField(max_length=20, default='primary')
+    done = models.BooleanField(default=False)
+    due_date = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'planner_tasks'
+        ordering = ['day', 'start_hour']

@@ -15,8 +15,24 @@ dj-rest-auth==7.0.0
 django-allauth==65.3.0
 django-storages[s3]==1.14.4
 boto3==1.35.0
+cloudinary==1.41.0
 drf-spectacular==0.27.2
 django-filter==24.3
 whitenoise==6.7.0
 gunicorn==23.0.0
+uvicorn[standard]==0.30.6
 requests==2.32.3
+pymongo==4.8.0
+# WebSocket / ASGI
+channels==4.1.0
+channels-redis==4.2.0
+daphne==4.1.2
+# AI / RAG
+langchain==0.3.7
+langchain-openai==0.2.9
+langchain-community==0.3.7
+langchain-core==0.3.0
+google-genai>=1.0.0
+openai==1.54.4
+chromadb==0.5.18
+tiktoken==0.8.0

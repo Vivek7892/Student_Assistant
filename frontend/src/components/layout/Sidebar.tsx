@@ -1,185 +1,263 @@
-import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, BookOpen, MessageSquare, Brain, BarChart2,
-  Bell, Settings, LogOut, ChevronLeft, ChevronRight, Sun, Moon,
-  Calendar, FileText, Award, Layers, User, Menu, X
+  LayoutDashboard, Bot, Youtube, FileText, HardDrive,
+  CreditCard, Brain, CalendarDays, Calendar, BarChart3,
+  User, Settings, Bell, ChevronLeft, Shield, X,
+  BookOpen, ExternalLink,
 } from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
-import { useLogout } from '@/api/auth'
-import { useUnreadCount } from '@/api/notifications'
-import { useThemeStore } from '@/store/themeStore'
-import { Avatar, Badge, Button } from '@/components/ui'
-import { cn } from '@/lib/utils'
+import { cn } from '../../lib/utils'
+import { Logo } from '../ui/Logo'
+import { useAuth } from '../../store/authStore'
+import { api } from '../../lib/api'
 
-const studentNavItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/student' },
-  { icon: Layers, label: 'Semesters', href: '/student/semesters' },
-  { icon: BookOpen, label: 'Subjects', href: '/student/subjects' },
-  { icon: FileText, label: 'Materials', href: '/student/materials' },
-  { icon: MessageSquare, label: 'AI Chatbot', href: '/student/chat' },
-  { icon: Brain, label: 'Quizzes', href: '/student/quizzes' },
-  { icon: Award, label: 'Flashcards', href: '/student/flashcards' },
-  { icon: Calendar, label: 'Study Planner', href: '/student/planner' },
-  { icon: BarChart2, label: 'Analytics', href: '/student/analytics' },
-  { icon: User, label: 'Profile', href: '/student/profile' },
+// ── Nav groups ───────────────────────────────────────────────────────────────
+const navGroups = [
+  {
+    label: 'Main',
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, to: '/app' },
+      { label: 'AI Tutor',  icon: Bot,             to: '/app/ai' },
+    ],
+  },
+  {
+    label: 'Study',
+    items: [
+      { label: 'Videos',     icon: Youtube,      to: '/app/courses' },
+      { label: 'Documents',  icon: FileText,     to: '/app/documents', hasDrive: true },
+      { label: 'Flashcards', icon: CreditCard,   to: '/app/flashcards' },
+      { label: 'Quizzes',    icon: Brain,        to: '/app/quizzes' },
+    ],
+  },
+  {
+    label: 'Plan',
+    items: [
+      { label: 'Planner',   icon: CalendarDays, to: '/app/planner' },
+      { label: 'Calendar',  icon: Calendar,     to: '/app/calendar' },
+      { label: 'Analytics', icon: BarChart3,    to: '/app/analytics' },
+    ],
+  },
 ]
 
-const teacherNavItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/teacher' },
-  { icon: Layers, label: 'Semesters', href: '/teacher/semesters' },
-  { icon: BookOpen, label: 'Subjects', href: '/teacher/subjects' },
-  { icon: FileText, label: 'Materials', href: '/teacher/materials' },
-  { icon: Award, label: 'Assignments', href: '/teacher/assignments' },
-  { icon: Brain, label: 'Quizzes', href: '/teacher/quizzes' },
-  { icon: BarChart2, label: 'Analytics', href: '/teacher/analytics' },
-  { icon: User, label: 'Profile', href: '/teacher/profile' },
+const bottomNav = [
+  { label: 'Profile',       icon: User,     to: '/app/profile' },
+  { label: 'Notifications', icon: Bell,     to: '/app/notifications', badge: true },
+  { label: 'Settings',      icon: Settings, to: '/app/settings' },
 ]
 
-const adminNavItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/admin' },
-  { icon: User, label: 'Users', href: '/admin/users' },
-  { icon: Layers, label: 'Semesters', href: '/admin/semesters' },
-  { icon: BookOpen, label: 'Subjects', href: '/admin/subjects' },
-  { icon: Brain, label: 'AI Analytics', href: '/admin/ai-analytics' },
-  { icon: BarChart2, label: 'Analytics', href: '/admin/analytics' },
-  { icon: Settings, label: 'Settings', href: '/admin/settings' },
-]
+// Google Drive folder URL — opens user's Drive in a new tab
+const DRIVE_URL = 'https://drive.google.com/drive/my-drive'
 
-export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const { pathname } = useLocation()
-  const user = useAuthStore((s) => s.user)
-  const { mutate: logout } = useLogout()
-  const { data: unread } = useUnreadCount()
-  const { theme, setTheme } = useThemeStore()
+interface SidebarProps {
+  onClose?: () => void
+}
 
-  const navItems = user?.role === 'admin' ? adminNavItems
-    : user?.role === 'teacher' ? teacherNavItems
-    : studentNavItems
+export function Sidebar({ onClose }: SidebarProps) {
+  const [collapsed,   setCollapsed]   = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const location = useLocation()
+  const { user: authUser } = useAuth()
+  const role     = authUser?.role ?? 'student'
+  const isMobile = !!onClose
+  const isCollapsed = !isMobile && collapsed
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-border', collapsed && 'px-3 justify-center')}>
-        <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shrink-0">
-          <Brain className="h-4 w-4 text-white" />
-        </div>
-        {!collapsed && <span className="font-bold text-lg gradient-text">EduAI</span>}
-      </div>
+  // Poll unread notification count
+  useEffect(() => {
+    function fetchUnread() {
+      api.get('/api/notifications/')
+        .then(r => {
+          const list: any[] = Array.isArray(r.data) ? r.data : r.data?.results ?? []
+          setUnreadCount(list.filter(n => !n.is_read).length)
+        })
+        .catch(() => {})
+    }
+    fetchUnread()
+    const id = setInterval(fetchUnread, 30000)
+    return () => clearInterval(id)
+  }, [])
 
-      {/* Nav items */}
-      <nav className="flex-1 overflow-y-auto scrollbar-hide py-4 px-2 space-y-0.5">
-        {navItems.map((item) => {
-          const active = pathname === item.href || (item.href !== '/student' && item.href !== '/teacher' && item.href !== '/admin' && pathname.startsWith(item.href))
-          return (
-            <Link key={item.href} to={item.href} onClick={() => setMobileOpen(false)}>
-              <motion.div
-                whileHover={{ x: 2 }}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
-                  active
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-                  collapsed && 'justify-center px-2'
-                )}
-              >
-                <item.icon className="h-4 w-4 shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-                {!collapsed && item.label === 'Notifications' && unread?.count ? (
-                  <Badge variant="destructive" className="ml-auto text-xs">{unread.count}</Badge>
-                ) : null}
-              </motion.div>
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* Bottom section */}
-      <div className="border-t border-border p-3 space-y-1">
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className={cn(
-            'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-all',
-            collapsed && 'justify-center'
-          )}
-        >
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          {!collapsed && <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
-        </button>
-        <button
-          onClick={() => logout()}
-          className={cn(
-            'flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all',
-            collapsed && 'justify-center'
-          )}
-        >
-          <LogOut className="h-4 w-4" />
-          {!collapsed && <span>Sign Out</span>}
-        </button>
-        {!collapsed && user && (
-          <div className="flex items-center gap-3 px-3 py-2 mt-2 rounded-xl bg-muted/50">
-            <Avatar name={user.full_name} src={user.avatar} size="sm" />
-            <div className="min-w-0">
-              <p className="text-xs font-medium truncate">{user.full_name}</p>
-              <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  const adminItem = role === 'admin'
+    ? [{ label: 'Admin Panel', icon: Shield, to: '/admin' }]
+    : []
 
   return (
-    <>
-      {/* Mobile toggle */}
-      <button
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-xl bg-card border border-border shadow-sm"
-        onClick={() => setMobileOpen(!mobileOpen)}
-      >
-        {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-      </button>
-
-      {/* Mobile overlay */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
-            onClick={() => setMobileOpen(false)}
-          />
+    <motion.aside
+      animate={{ width: isCollapsed ? 64 : 224 }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+      className="relative flex flex-col h-full bg-[var(--surface)] border-r border-[var(--border)] overflow-hidden shrink-0"
+    >
+      {/* Logo */}
+      <div className="flex items-center gap-2.5 px-4 py-4 border-b border-[var(--border)]">
+        <div className="shrink-0"><Logo size={32} /></div>
+        <AnimatePresence>
+          {!isCollapsed && (
+            <motion.span
+              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
+              className="font-display font-bold text-lg text-[var(--text-1)] tracking-tight flex-1"
+            >
+              StudyBuddy
+            </motion.span>
+          )}
+        </AnimatePresence>
+        {isMobile && (
+          <button onClick={onClose} className="ml-auto p-1 rounded-lg hover:bg-[var(--surface-2)] text-[var(--text-2)]">
+            <X size={18} />
+          </button>
         )}
-      </AnimatePresence>
+      </div>
 
-      {/* Mobile sidebar */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.aside
-            initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed left-0 top-0 h-full z-50 w-64 bg-card border-r border-border shadow-xl lg:hidden"
-          >
-            <SidebarContent />
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto no-scrollbar py-3 px-2 space-y-4">
 
-      {/* Desktop sidebar */}
-      <motion.aside
-        animate={{ width: collapsed ? 64 : 240 }}
-        transition={{ type: 'spring', damping: 20, stiffness: 150 }}
-        className="hidden lg:flex flex-col fixed left-0 top-0 h-full bg-card border-r border-border z-30 overflow-hidden"
-      >
-        <SidebarContent />
+        {/* Admin shortcut */}
+        {adminItem.map(({ label, icon: Icon, to }) => {
+          const active = location.pathname.startsWith(to)
+          return (
+            <NavLink key={to} to={to} title={isCollapsed ? label : undefined} onClick={onClose}
+              className={cn('nav-item', active && 'active')}>
+              <Icon size={18} className="shrink-0" />
+              <AnimatePresence>
+                {!isCollapsed && (
+                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="truncate">
+                    {label}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </NavLink>
+          )
+        })}
+
+        {/* Grouped nav */}
+        {navGroups.map(group => (
+          <div key={group.label} className="space-y-0.5">
+            <AnimatePresence>
+              {!isCollapsed && (
+                <motion.p
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="text-[10px] font-semibold text-[var(--text-3)] uppercase tracking-wider px-3 pb-1"
+                >
+                  {group.label}
+                </motion.p>
+              )}
+            </AnimatePresence>
+
+            {group.items.map(({ label, icon: Icon, to, hasDrive }: any) => {
+              const active = to === '/app'
+                ? location.pathname === '/app'
+                : location.pathname.startsWith(to)
+              return (
+                <div key={to} className="relative group/item">
+                  <NavLink to={to} title={isCollapsed ? label : undefined} onClick={onClose}
+                    className={cn('nav-item', active && 'active')}>
+                    <Icon size={18} className="shrink-0" />
+                    <AnimatePresence>
+                      {!isCollapsed && (
+                        <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="truncate flex-1">
+                          {label}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                    {/* Drive icon for Documents */}
+                    {hasDrive && !isCollapsed && (
+                      <a
+                        href={DRIVE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        title="Open Google Drive"
+                        className="opacity-0 group-hover/item:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-primary-500"
+                      >
+                        <HardDrive size={13} />
+                      </a>
+                    )}
+                  </NavLink>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </nav>
+
+      {/* Bottom */}
+      <div className="border-t border-[var(--border)] px-2 py-2 space-y-0.5">
+        {bottomNav.map(({ label, icon: Icon, to, badge }) => {
+          const active = location.pathname.startsWith(to)
+          return (
+            <NavLink key={to} to={to} title={isCollapsed ? label : undefined} onClick={onClose}
+              className={cn('nav-item relative', active && 'active')}>
+              <div className="relative shrink-0">
+                <Icon size={18} />
+                {badge && unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-primary-500 text-white text-[8px] font-bold flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
+              <AnimatePresence>
+                {!isCollapsed && (
+                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="truncate flex-1">
+                    {label}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              {badge && unreadCount > 0 && !isCollapsed && (
+                <AnimatePresence>
+                  <motion.span
+                    initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+                    className="ml-auto min-w-[18px] h-4.5 px-1 rounded-full bg-primary-500 text-white text-[9px] font-bold flex items-center justify-center"
+                  >
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </motion.span>
+                </AnimatePresence>
+              )}
+            </NavLink>
+          )
+        })}
+
+        {/* Google Drive shortcut */}
+        <AnimatePresence>
+          {!isCollapsed && (
+            <motion.a
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              href={DRIVE_URL} target="_blank" rel="noopener noreferrer"
+              className="nav-item text-[var(--text-3)] hover:text-[var(--text-1)]"
+              title="Google Drive"
+            >
+              <HardDrive size={18} className="shrink-0" />
+              <span className="truncate flex-1">Google Drive</span>
+              <ExternalLink size={11} className="shrink-0 opacity-60" />
+            </motion.a>
+          )}
+        </AnimatePresence>
+
+        {/* User chip */}
+        <div className={cn('flex items-center gap-2.5 px-2 py-2 mt-1 rounded-xl', isCollapsed && 'justify-center')}>
+          <div className="w-7 h-7 rounded-full bg-gradient-primary flex items-center justify-center shrink-0 text-white text-xs font-bold">
+            {authUser?.first_name?.[0] ?? authUser?.email?.[0]?.toUpperCase() ?? '?'}
+          </div>
+          <AnimatePresence>
+            {!isCollapsed && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-[var(--text-1)] truncate">{authUser?.full_name ?? authUser?.email}</p>
+                <p className="text-xs text-[var(--text-3)] capitalize">{authUser?.role}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Collapse toggle — desktop only */}
+      {!isMobile && (
         <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-20 h-6 w-6 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-accent transition-colors"
+          onClick={() => setCollapsed(c => !c)}
+          className="absolute top-4 -right-3 w-6 h-6 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center shadow-glass hover:bg-[var(--surface-2)] transition-colors z-10"
         >
-          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
+          <motion.div animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.25 }}>
+            <ChevronLeft size={12} className="text-[var(--text-2)]" />
+          </motion.div>
         </button>
-      </motion.aside>
-    </>
+      )}
+    </motion.aside>
   )
 }

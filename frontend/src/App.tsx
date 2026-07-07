@@ -1,110 +1,64 @@
-import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
-import { ErrorBoundary } from '@/components/shared/ErrorBoundary'
-import { ProtectedRoute } from '@/components/shared/ProtectedRoute'
-import { useThemeStore } from '@/store/themeStore'
-import { Skeleton } from '@/components/ui/Skeleton'
-
-// Lazy-loaded pages
-const LandingPage = lazy(() => import('@/pages/landing/Landing'))
-const LoginPage = lazy(() => import('@/pages/auth/Login'))
-const RegisterPage = lazy(() => import('@/pages/auth/Register'))
-
-const StudentDashboard = lazy(() => import('@/pages/student/Dashboard'))
-const StudentChat = lazy(() => import('@/pages/student/Chat'))
-const StudentQuizzes = lazy(() => import('@/pages/student/Quizzes'))
-const StudentFlashcards = lazy(() => import('@/pages/student/Flashcards'))
-const StudentAnalytics = lazy(() => import('@/pages/student/Analytics'))
-const StudentProfile = lazy(() => import('@/pages/student/Profile'))
-const StudentSemesters = lazy(() => import('@/pages/student/Semesters'))
-const StudentSubjects = lazy(() => import('@/pages/student/Subjects'))
-const StudentMaterials = lazy(() => import('@/pages/student/Materials'))
-const StudentPlanner = lazy(() => import('@/pages/student/Planner'))
-
-const TeacherDashboard = lazy(() => import('@/pages/teacher/Dashboard'))
-const TeacherMaterials = lazy(() => import('@/pages/teacher/Materials'))
-const TeacherAssignments = lazy(() => import('@/pages/teacher/Assignments'))
-const TeacherQuizzes = lazy(() => import('@/pages/teacher/Quizzes'))
-const TeacherAnalytics = lazy(() => import('@/pages/teacher/Analytics'))
-const AdminDashboard = lazy(() => import('@/pages/admin/Dashboard'))
-
-function AuthRedirect({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useAuthStore()
-  if (isAuthenticated && user) {
-    const map: Record<string, string> = { student: '/student', teacher: '/teacher', admin: '/admin' }
-    return <Navigate to={map[user.role] || '/student'} replace />
-  }
-  return <>{children}</>
-}
-
-function PageLoader() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="space-y-3 w-64">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-      </div>
-    </div>
-  )
-}
+import { ErrorBoundary } from './components/shared'
+import { AppShell }    from './components/layout/AppShell'
+import Landing         from './pages/landing/Landing'
+import Login           from './pages/auth/Login'
+import Register        from './pages/auth/Register'
+import GoogleCallback  from './pages/auth/GoogleCallback'
+import DriveCallback   from './pages/auth/DriveCallback'
+import ForgotPassword  from './pages/auth/ForgotPassword'
+import ResetPassword   from './pages/auth/ResetPassword'
+import Dashboard       from './pages/app/Dashboard'
+import AITutor         from './pages/app/AITutor'
+import Courses         from './pages/app/Courses'
+import Documents       from './pages/app/Documents'
+import Flashcards      from './pages/app/Flashcards'
+import Quizzes         from './pages/app/Quizzes'
+import Planner         from './pages/app/Planner'
+import Calendar        from './pages/app/Calendar'
+import Analytics       from './pages/app/Analytics'
+import Profile         from './pages/app/Profile'
+import Notifications   from './pages/app/Notifications'
+import Settings        from './pages/app/Settings'
+import AdminDashboard  from './pages/admin/Dashboard'
+import { ProtectedRoute } from './components/shared'
 
 export default function App() {
-  const { theme, setTheme } = useThemeStore()
-
-  useEffect(() => {
-    setTheme(theme)
-  }, [])
-
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            {/* Public */}
-            <Route path="/" element={<AuthRedirect><LandingPage /></AuthRedirect>} />
-            <Route path="/login" element={<AuthRedirect><LoginPage /></AuthRedirect>} />
-            <Route path="/register" element={<AuthRedirect><RegisterPage /></AuthRedirect>} />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/"         element={<Landing />} />
+        <Route path="/login"    element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/auth/google/callback" element={<GoogleCallback />} />
+        <Route path="/drive-callback"        element={<DriveCallback />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
 
-            {/* Student routes */}
-            <Route element={<ProtectedRoute allowedRoles={['student']} />}>
-              <Route path="/student" element={<StudentDashboard />} />
-              <Route path="/student/chat" element={<StudentChat />} />
-              <Route path="/student/quizzes" element={<StudentQuizzes />} />
-              <Route path="/student/flashcards" element={<StudentFlashcards />} />
-              <Route path="/student/analytics" element={<StudentAnalytics />} />
-              <Route path="/student/profile" element={<StudentProfile />} />
-              <Route path="/student/semesters" element={<StudentSemesters />} />
-              <Route path="/student/semesters/:id" element={<StudentSemesters />} />
-              <Route path="/student/subjects" element={<StudentSubjects />} />
-              <Route path="/student/materials" element={<StudentMaterials />} />
-              <Route path="/student/planner" element={<StudentPlanner />} />
-            </Route>
+        <Route path="/app" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+          <Route index element={<Dashboard />} />
+          <Route path="ai"            element={<AITutor />} />
+          <Route path="ai/c/:sessionId" element={<AITutor />} />
+          <Route path="courses"       element={<Courses />} />
+          <Route path="documents"     element={<Documents />} />
+          <Route path="flashcards"    element={<Flashcards />} />
+          <Route path="quizzes"       element={<Quizzes />} />
+          <Route path="planner"       element={<Planner />} />
+          <Route path="calendar"      element={<Calendar />} />
+          <Route path="analytics"     element={<Analytics />} />
+          <Route path="profile"       element={<Profile />} />
+          <Route path="notifications" element={<Notifications />} />
+          <Route path="settings"      element={<Settings />} />
+        </Route>
 
-            {/* Teacher routes */}
-            <Route element={<ProtectedRoute allowedRoles={['teacher']} />}>
-              <Route path="/teacher" element={<TeacherDashboard />} />
-              <Route path="/teacher/materials" element={<TeacherMaterials />} />
-              <Route path="/teacher/assignments" element={<TeacherAssignments />} />
-              <Route path="/teacher/quizzes" element={<TeacherQuizzes />} />
-              <Route path="/teacher/analytics" element={<TeacherAnalytics />} />
-              <Route path="/teacher/profile" element={<StudentProfile />} />
-              <Route path="/teacher/semesters" element={<StudentSemesters />} />
-              <Route path="/teacher/semesters/:id" element={<StudentSemesters />} />
-              <Route path="/teacher/subjects" element={<StudentSubjects />} />
-            </Route>
+        <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AppShell /></ProtectedRoute>}>
+          <Route index element={<AdminDashboard />} />
+        </Route>
 
-            {/* Admin routes */}
-            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route path="/admin" element={<AdminDashboard />} />
-            </Route>
-
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
     </ErrorBoundary>
   )
 }

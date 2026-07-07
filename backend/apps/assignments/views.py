@@ -2,7 +2,7 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from apps.accounts.permissions import IsTeacher
+from apps.accounts.permissions import IsAdmin
 from .models import Assignment, AssignmentSubmission
 from .serializers import AssignmentSerializer, AssignmentSubmissionSerializer, GradeSubmissionSerializer
 
@@ -22,7 +22,7 @@ class AssignmentViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsTeacher()]
+            return [IsAdmin()]
         return [permissions.IsAuthenticated()]
 
     def perform_create(self, serializer):
@@ -61,7 +61,7 @@ class SubmissionViewSet(viewsets.ModelViewSet):
             return AssignmentSubmission.objects.filter(student=user)
         return AssignmentSubmission.objects.filter(assignment__created_by=user)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsTeacher])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def grade(self, request, pk=None):
         submission = self.get_object()
         serializer = GradeSubmissionSerializer(data=request.data)

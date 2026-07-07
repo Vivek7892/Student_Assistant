@@ -25,6 +25,9 @@ def env_list(key, default=''):
 SECRET_KEY = env('SECRET_KEY', 'django-insecure-fallback-key-change-in-production')
 DEBUG = env_bool('DEBUG', True)
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1')
+# Allow all Render subdomains automatically
+if not DEBUG:
+    ALLOWED_HOSTS += ['.onrender.com']
 
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -151,20 +154,31 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=env_int('JWT_ACCESS_TOKEN_LIFETIME', 60)),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=env_int('JWT_ACCESS_TOKEN_LIFETIME', 15)),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=env_int('JWT_REFRESH_TOKEN_LIFETIME', 7)),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'ALGORITHM': 'HS256',
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'TOKEN_OBTAIN_SERIALIZER': 'apps.accounts.serializers.CustomTokenObtainPairSerializer',
 }
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://localhost:3000',
-]
+CORS_ALLOWED_ORIGINS = env_list(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173'
+)
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Production security headers
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = 'DENY'
 
 # Channels — optional, only active if channels is installed
 try:
@@ -222,8 +236,16 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
-OPENAI_API_KEY = env('OPENAI_API_KEY')
-FRONTEND_URL = env('FRONTEND_URL', 'http://localhost:5173')
+OPENAI_API_KEY = env('OPENAI_API_KEY')   # kept for legacy, Gemini is primary
+GEMINI_API_KEY = env('GEMINI_API_KEY')   # Google AI Studio key
+GOOGLE_CLIENT_ID     = env('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET')
+YOUTUBE_API_KEY = env('YOUTUBE_API_KEY')
+FRONTEND_URL   = env('FRONTEND_URL', 'http://localhost:5173')
+
+# MongoDB (chat history)
+MONGO_URI = env('MONGO_URI', 'mongodb://localhost:27017')
+MONGO_DB_NAME = env('MONGO_DB_NAME', 'student_assistant')
 
 # Cloudflare R2
 CLOUDFLARE_R2_ACCOUNT_ID = env('CF_R2_ACCOUNT_ID')
@@ -246,7 +268,21 @@ if CLOUDFLARE_R2_ACCOUNT_ID and CLOUDFLARE_R2_ACCOUNT_ID != 'your-cloudflare-acc
         AWS_S3_CUSTOM_DOMAIN = CLOUDFLARE_R2_PUBLIC_URL.replace('https://', '')
         MEDIA_URL = f'{CLOUDFLARE_R2_PUBLIC_URL}/'
 
-CHROMA_PERSIST_DIR = BACKEND_DIR / 'chroma_db'
+# Cloudinary (PDFs, images, videos — takes priority over R2 if configured)
+CLOUDINARY_CLOUD_NAME = env('CLOUDINARY_CLOUD_NAME')
+CLOUDINARY_API_KEY    = env('CLOUDINARY_API_KEY')
+CLOUDINARY_API_SECRET = env('CLOUDINARY_API_SECRET')
+
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_CLOUD_NAME != 'your-cloud-name':
+    import cloudinary
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
+
+CHROMA_PERSIST_DIR = Path(os.environ.get('CHROMA_PERSIST_DIR', str(BACKEND_DIR / 'chroma_db')))
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Student Assistant API',

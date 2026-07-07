@@ -1,303 +1,372 @@
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import {
-  Brain, Zap, BookOpen, BarChart2, MessageSquare, Award,
-  ChevronDown, ArrowRight, Star, Check, Github, Users,
-  FileText, Layers, Globe, Mic
-} from 'lucide-react'
-import { Button, Card } from '@/components/ui'
+import { Bot, BookOpen, Brain, Zap, Star, ArrowRight, Check, GraduationCap, Flame, Sun, Moon, Youtube, Menu, X, MessageSquare, Layers } from 'lucide-react'
+import { useTheme } from '../../store/themeStore'
+import { Logo } from '../../components/ui/Logo'
 
-const fadeUp = { initial: { opacity: 0, y: 24 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true }, transition: { duration: 0.5 } }
+const fadeUp = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0, transition: { duration: 0.5 } } }
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } }
 
 const features = [
-  { icon: Brain, title: 'RAG-Powered AI', desc: 'Upload documents and get instant AI answers with source citations from your study materials.', color: 'from-violet-500 to-purple-600', span: 'col-span-2' },
-  { icon: MessageSquare, title: 'Multi-language Chat', desc: 'Chat in English and Kannada', color: 'from-blue-500 to-cyan-500', span: '' },
-  { icon: Mic, title: 'Voice Interaction', desc: 'Speak your questions out loud', color: 'from-pink-500 to-rose-500', span: '' },
-  { icon: FileText, title: 'Smart Quizzes', desc: 'Auto-generate MCQ quizzes from any uploaded document using AI.', color: 'from-orange-500 to-amber-500', span: '' },
-  { icon: Award, title: 'Flashcards', desc: 'AI generates study flashcards from your notes instantly.', color: 'from-green-500 to-emerald-500', span: '' },
-  { icon: BarChart2, title: 'Learning Analytics', desc: 'Track progress, quiz scores, and learning patterns with detailed analytics.', color: 'from-indigo-500 to-violet-500', span: 'col-span-2' },
-]
-
-const stats = [
-  { value: '10,000+', label: 'Active Students' },
-  { value: '500+', label: 'Teachers' },
-  { value: '1M+', label: 'AI Queries' },
-  { value: '98%', label: 'Satisfaction Rate' },
-]
-
-const steps = [
-  { step: '01', title: 'Upload Materials', desc: 'Upload PDFs, DOCX, PPTX, or TXT study materials to the platform.' },
-  { step: '02', title: 'AI Processing', desc: 'Our RAG pipeline extracts text, generates embeddings, and indexes content.' },
-  { step: '03', title: 'Ask Anything', desc: 'Chat with AI, generate quizzes, flashcards, and study plans instantly.' },
-  { step: '04', title: 'Track Progress', desc: 'Monitor performance with detailed analytics and personalized insights.' },
+  {
+    icon: Bot,
+    title: 'AI Tutor — Powered by Gemini',
+    desc: 'Chat with an AI that has read all your uploaded notes, PDFs, and slides. Get instant, cited answers — not generic web results.',
+    color: 'primary',
+    bullets: ['Contextual answers from your own materials', 'Cites exact source passages', 'Supports follow-up questions & conversation history'],
+  },
+  {
+    icon: Brain,
+    title: 'Smart Flashcards',
+    desc: 'Spaced-repetition algorithm surfaces the right cards at the right time for maximum retention.',
+    color: 'emerald',
+    bullets: ['Auto-generated from your documents', 'SM-2 spaced repetition scheduling', 'Track mastery per subject'],
+  },
+  {
+    icon: Zap,
+    title: 'Adaptive Quizzes',
+    desc: 'AI generates personalized quizzes based on your weak areas and upcoming exam schedule.',
+    color: 'amber',
+    bullets: ['MCQs auto-generated from study material', 'Difficulty adapts to your performance', 'Detailed explanations for every answer'],
+  },
+  {
+    icon: BookOpen,
+    title: 'Document RAG',
+    desc: 'Upload PDFs, slides, and notes. AI indexes everything and answers with source citations.',
+    color: 'cyan',
+    bullets: ['Supports PDF, DOCX, PPTX, TXT', 'Semantic search across all uploads', 'Instant document summaries'],
+  },
+  {
+    icon: Youtube,
+    title: 'YouTube Learning Hub',
+    desc: 'Add YouTube videos to any subject. Thumbnails, duration, and view counts are fetched automatically.',
+    color: 'rose',
+    bullets: ['Paste any YouTube link to save it', 'Auto-fetches title, thumbnail & duration', 'Organised per subject for easy access'],
+  },
+  {
+    icon: Flame,
+    title: 'Streak & Progress System',
+    desc: 'Gamified daily streaks, XP, and achievements keep you motivated like Duolingo for academics.',
+    color: 'amber',
+    bullets: ['Daily study streaks & XP rewards', 'Progress rings per subject', 'Analytics dashboard to track growth'],
+  },
 ]
 
 const testimonials = [
-  { name: 'Priya Sharma', role: 'Engineering Student', text: 'EduAI transformed how I study. The AI chatbot explains concepts from my notes instantly. My grades improved by 30%!', rating: 5 },
-  { name: 'Dr. Ravi Kumar', role: 'Professor, VTU', text: 'As a teacher, I can now upload materials and track student engagement with AI analytics. Absolutely game-changing.', rating: 5 },
-  { name: 'Aditya Nair', role: 'Final Year Student', text: 'Auto-generated quizzes from my notes save me hours of preparation. The Kannada support is amazing!', rating: 5 },
+  { name: 'Vivek V ',     role: 'CS Junior, Stanford',    avatar: 'https://api.dicebear.com/8.x/avataaars/svg?seed=Sarah',  text: 'StudyBuddy helped me go from a B- to an A in Algorithms. The AI tutor explains concepts better than my TA.',  rating: 5 },
+  { name: 'Mahesh K', role: 'Pre-Med, Johns Hopkins',  avatar: 'https://api.dicebear.com/8.x/avataaars/svg?seed=Marcus', text: 'The spaced-repetition flashcards are insane. I memorized 500 biochemistry terms in 3 weeks.',            rating: 5 },
+  { name: 'Tejonidhi M',    role: 'MBA, Wharton',           avatar: 'https://api.dicebear.com/8.x/avataaars/svg?seed=Priya',  text: 'Finally a study platform that feels like a real product. The design is beautiful and it actually works.', rating: 5 },
 ]
 
-const faqs = [
-  { q: 'What file formats are supported?', a: 'We support PDF, DOCX, PPTX, and TXT files up to 50MB each.' },
-  { q: 'How does the AI answer questions?', a: 'Using RAG (Retrieval-Augmented Generation), the AI retrieves relevant chunks from your uploaded documents and generates contextual answers.' },
-  { q: 'Is my data secure?', a: 'Yes. All files are stored securely in Supabase Storage with row-level security. Your data is never shared.' },
-  { q: 'Can I use it in Kannada?', a: 'Yes! Our AI supports both English and Kannada for questions and answers.' },
-  { q: 'Is there a free plan?', a: 'Students can access all core features for free. Premium plans add advanced analytics and unlimited storage.' },
+const colorBg: Record<string, string>   = { primary: 'bg-primary-100 dark:bg-primary-900/30', emerald: 'bg-emerald-400/10', amber: 'bg-amber-400/10', cyan: 'bg-cyan-400/10', rose: 'bg-rose-400/10' }
+const colorText: Record<string, string> = { primary: 'text-primary-500', emerald: 'text-emerald-500', amber: 'text-amber-500', cyan: 'text-cyan-500', rose: 'text-rose-500' }
+
+const NAV_LINKS = [
+  { label: 'Features',     href: '#features' },
+  { label: 'How it works', href: '#how-it-works' },
+  { label: 'Testimonials', href: '#testimonials' },
 ]
 
-export default function LandingPage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null)
+export default function Landing() {
+  const { dark, toggle } = useTheme()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
-              <Brain className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-bold text-lg gradient-text">EduAI</span>
-          </Link>
-          <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#features" className="hover:text-foreground transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
-            <a href="#testimonials" className="hover:text-foreground transition-colors">Testimonials</a>
-            <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+    <div className="min-h-screen mesh-bg">
+      {/* Nav */}
+      <nav className="sticky top-0 z-50 glass-strong border-b border-[var(--border)]">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Logo size={32} />
+            <span className="font-display font-bold text-xl text-[var(--text-1)] tracking-tight">StudyBuddy</span>
           </div>
-          <div className="flex items-center gap-3">
-            <Link to="/login"><Button variant="ghost" size="sm">Sign In</Button></Link>
-            <Link to="/register"><Button size="sm">Get Started <ArrowRight className="h-3.5 w-3.5" /></Button></Link>
+
+          {/* Desktop links */}
+          <div className="hidden md:flex items-center gap-6 text-sm text-[var(--text-2)]">
+            {NAV_LINKS.map(l => (
+              <a key={l.label} href={l.href} className="hover:text-[var(--text-1)] transition-colors">{l.label}</a>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={toggle} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-2)] hover:bg-[var(--surface-2)] transition-colors">
+              {dark ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+            <Link to="/login" className="hidden sm:inline-flex px-4 py-2 rounded-xl border border-[var(--border)] text-[var(--text-1)] text-sm font-medium hover:bg-[var(--surface-2)] transition-colors">
+              Sign in
+            </Link>
+            <Link to="/register" className="hidden sm:inline-flex px-4 py-2 rounded-xl bg-gradient-primary text-white text-sm font-medium hover:shadow-lift transition-shadow">
+              Get started
+            </Link>
+            {/* Mobile hamburger */}
+            <button onClick={() => setMobileOpen(o => !o)} className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-2)] hover:bg-[var(--surface-2)] transition-colors">
+              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {mobileOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              className="md:hidden border-t border-[var(--border)] bg-[var(--surface)] overflow-hidden"
+            >
+              <div className="px-6 py-4 space-y-3">
+                {NAV_LINKS.map(l => (
+                  <a key={l.label} href={l.href} onClick={() => setMobileOpen(false)}
+                    className="block text-sm text-[var(--text-2)] hover:text-[var(--text-1)] transition-colors py-1">
+                    {l.label}
+                  </a>
+                ))}
+                <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
+                  <Link to="/login" onClick={() => setMobileOpen(false)}
+                    className="flex-1 text-center px-4 py-2 rounded-xl border border-[var(--border)] text-[var(--text-1)] text-sm font-medium hover:bg-[var(--surface-2)] transition-colors">
+                    Sign in
+                  </Link>
+                  <Link to="/register" onClick={() => setMobileOpen(false)}
+                    className="flex-1 text-center px-4 py-2 rounded-xl bg-gradient-primary text-white text-sm font-medium">
+                    Get started
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero */}
-      <section className="relative py-24 px-6 overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-1/4 left-1/4 h-96 w-96 bg-violet-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-1/4 right-1/4 h-96 w-96 bg-indigo-500/10 rounded-full blur-3xl" />
-        </div>
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div {...fadeUp}>
-            <span className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-sm font-medium mb-6">
-              <Zap className="h-3.5 w-3.5" />
-              AI-Powered Learning Platform
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-16 sm:pb-20 text-center">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+          <motion.div variants={fadeUp}>
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-300 text-xs font-semibold border border-primary-200 dark:border-primary-800">
+              ✦ AI-First Learning Platform
             </span>
           </motion.div>
-          <motion.h1 {...fadeUp} transition={{ delay: 0.1 }} className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
-            Study Smarter with
-            <span className="gradient-text block">AI-Powered Learning</span>
+          <motion.h1 variants={fadeUp} className="font-display text-4xl sm:text-5xl md:text-7xl font-bold text-[var(--text-1)] leading-tight text-balance">
+            Study smarter with<br /><span className="gradient-text">AI that knows</span><br />your curriculum
           </motion.h1>
-          <motion.p {...fadeUp} transition={{ delay: 0.2 }} className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            Upload your study materials. Get instant AI answers, auto-generated quizzes, flashcards, and personalized study plans — in English and Kannada.
+          <motion.p variants={fadeUp} className="text-lg text-[var(--text-2)] max-w-2xl mx-auto leading-relaxed">
+            StudyBuddy combines a context-aware AI tutor, spaced-repetition flashcards, adaptive quizzes, and deep analytics into one beautiful workspace.
           </motion.p>
-          <motion.div {...fadeUp} transition={{ delay: 0.3 }} className="flex items-center justify-center gap-4 flex-wrap">
-            <Link to="/register">
-              <Button size="lg" className="gap-2 shadow-lg shadow-primary/25">
-                Start Learning Free <ArrowRight className="h-4 w-4" />
-              </Button>
+          <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link to="/register" className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-primary text-white font-semibold hover:shadow-lift transition-shadow">
+              Start for free <ArrowRight size={16} />
             </Link>
-            <Link to="/login">
-              <Button size="lg" variant="outline">Sign In</Button>
-            </Link>
+            <a href="#features" className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text-1)] font-medium hover:bg-[var(--surface-2)] transition-colors">
+              See how it works
+            </a>
           </motion.div>
+          <motion.div variants={fadeUp} className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-sm text-[var(--text-3)]">
+            {['No credit card required', '14-day free trial', 'Cancel anytime'].map(t => (
+              <span key={t} className="flex items-center gap-1.5"><Check size={13} className="text-emerald-500" /> {t}</span>
+            ))}
+          </motion.div>
+        </motion.div>
 
-          {/* Hero preview */}
-          <motion.div {...fadeUp} transition={{ delay: 0.4 }} className="mt-16 relative">
-            <div className="rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
-              <div className="bg-muted/50 border-b border-border px-4 py-3 flex items-center gap-2">
-                <div className="flex gap-1.5">
-                  {['bg-red-400', 'bg-yellow-400', 'bg-green-400'].map((c) => <div key={c} className={`h-3 w-3 rounded-full ${c}`} />)}
-                </div>
-                <div className="flex-1 mx-4 bg-background rounded-lg h-6 px-3 flex items-center text-xs text-muted-foreground">
-                  app.eduai.in/student/chat
-                </div>
+        {/* App preview mockup */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.4 }}
+          className="mt-12 sm:mt-16 relative"
+        >
+          <div className="glass rounded-2xl sm:rounded-3xl p-1 shadow-glass-lg overflow-hidden">
+            <div className="bg-[var(--surface)] rounded-xl sm:rounded-2xl overflow-hidden">
+              {/* Browser chrome */}
+              <div className="flex h-7 sm:h-8 items-center gap-1.5 px-4 bg-[var(--surface-2)] border-b border-[var(--border)]">
+                {['bg-rose-400', 'bg-amber-400', 'bg-emerald-400'].map((c, i) => (
+                  <div key={i} className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${c}`} />
+                ))}
+                <div className="flex-1 mx-4 h-3 sm:h-4 bg-[var(--border)] rounded-full" />
               </div>
-              <div className="p-6 bg-background min-h-48 flex items-center justify-center">
-                <div className="space-y-4 w-full max-w-lg">
-                  <div className="flex gap-3">
-                    <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
-                      <Brain className="h-4 w-4 text-white" />
+
+              <div className="flex h-64 sm:h-96">
+                {/* Sidebar */}
+                <div className="hidden sm:flex flex-col w-44 border-r border-[var(--border)] p-3 gap-1">
+                  {['Dashboard', 'AI Tutor', 'Courses', 'Flashcards', 'Analytics'].map((item, i) => (
+                    <div key={item} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg ${i === 1 ? 'bg-primary-100 dark:bg-primary-900/30' : ''}`}>
+                      <div className={`w-3 h-3 rounded-sm ${i === 1 ? 'bg-primary-500' : 'bg-[var(--border)]'}`} />
+                      <div className={`h-2 rounded-full flex-1 ${i === 1 ? 'bg-primary-300 dark:bg-primary-700' : 'bg-[var(--border)]'}`} />
                     </div>
-                    <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3 text-sm max-w-xs">
-                      Hello! I've processed your Operating Systems notes. Ask me anything about processes, memory management, or file systems.
+                  ))}
+                </div>
+
+                {/* Chat panel */}
+                <div className="flex-1 flex flex-col">
+                  {/* Chat header */}
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--surface-2)]">
+                    <div className="w-6 h-6 rounded-lg bg-gradient-primary flex items-center justify-center">
+                      <Bot size={13} className="text-white" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--text-1)] leading-none">AI Tutor</p>
+                      <p className="text-[10px] text-emerald-500 mt-0.5">● Online · Gemini 1.5 Flash</p>
                     </div>
                   </div>
-                  <div className="flex gap-3 flex-row-reverse">
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0 text-white text-xs font-bold">PS</div>
-                    <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 text-sm max-w-xs">
-                      What is the difference between process and thread?
+
+                  {/* Messages */}
+                  <div className="flex-1 overflow-hidden px-4 py-3 space-y-3">
+                    {/* User message */}
+                    <div className="flex justify-end">
+                      <div className="max-w-[72%] bg-gradient-primary text-white text-xs rounded-2xl rounded-tr-sm px-3 py-2 leading-relaxed">
+                        Explain Newton's second law with an example
+                      </div>
+                    </div>
+                    {/* AI message */}
+                    <div className="flex gap-2 items-start">
+                      <div className="w-6 h-6 rounded-lg bg-gradient-primary flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot size={11} className="text-white" />
+                      </div>
+                      <div className="max-w-[78%] bg-[var(--surface-2)] border border-[var(--border)] text-xs rounded-2xl rounded-tl-sm px-3 py-2 space-y-1.5">
+                        <p className="text-[var(--text-1)] leading-relaxed">
+                          <span className="font-semibold">F = ma</span> — Force equals mass times acceleration.
+                        </p>
+                        <p className="text-[var(--text-2)] leading-relaxed">
+                          A 2 kg ball pushed with 10 N accelerates at <span className="font-medium text-primary-500">5 m/s²</span>.
+                        </p>
+                        <div className="flex items-center gap-1 pt-0.5">
+                          <div className="px-1.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-300 text-[9px] font-medium">📄 Physics Notes p.12</div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Typing indicator */}
+                    <div className="flex gap-2 items-center">
+                      <div className="w-6 h-6 rounded-lg bg-gradient-primary flex items-center justify-center shrink-0">
+                        <Bot size={11} className="text-white" />
+                      </div>
+                      <div className="bg-[var(--surface-2)] border border-[var(--border)] rounded-2xl rounded-tl-sm px-3 py-2">
+                        <div className="flex gap-1 items-center">
+                          {[0,1,2].map(i => (
+                            <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-primary-400"
+                              animate={{ y: [0, -4, 0] }} transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15 }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
-                      <Brain className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="bg-muted rounded-2xl rounded-tl-sm px-4 py-3 text-sm max-w-sm">
-                      Based on your notes: A <strong>process</strong> is an independent program in execution with its own memory space, while a <strong>thread</strong> is a lightweight unit of execution within a process that shares memory...
+
+                  {/* Input bar */}
+                  <div className="px-3 py-2 border-t border-[var(--border)]">
+                    <div className="flex items-center gap-2 bg-[var(--surface-2)] rounded-xl border border-[var(--border)] px-3 py-1.5">
+                      <p className="flex-1 text-xs text-[var(--text-3)]">Ask about your study materials…</p>
+                      <div className="w-5 h-5 rounded-lg bg-gradient-primary flex items-center justify-center">
+                        <ArrowRight size={10} className="text-white" />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </motion.div>
-        </div>
+          </div>
+          <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-primary opacity-10 blur-3xl" />
+        </motion.div>
       </section>
 
-      {/* Stats */}
-      <section className="py-16 border-y border-border bg-muted/30">
-        <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
-          {stats.map((stat) => (
-            <motion.div key={stat.label} {...fadeUp} className="text-center">
-              <p className="text-3xl font-bold gradient-text">{stat.value}</p>
-              <p className="text-muted-foreground text-sm mt-1">{stat.label}</p>
+      {/* How it works */}
+      <section id="how-it-works" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
+          <h2 className="font-display text-4xl font-bold text-[var(--text-1)]">How it works</h2>
+          <p className="text-[var(--text-2)] mt-3 max-w-xl mx-auto">Three simple steps to transform your study sessions.</p>
+        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {[
+            { icon: BookOpen,      step: '01', title: 'Upload your materials',  desc: 'Drop in your PDFs, slides, or notes. Our RAG pipeline indexes everything instantly.' },
+            { icon: MessageSquare, step: '02', title: 'Chat with your AI tutor', desc: 'Ask questions in plain English. Get cited answers drawn directly from your own content.' },
+            { icon: Layers,        step: '03', title: 'Reinforce with quizzes',  desc: "Auto-generated flashcards and quizzes lock in what you've learned before exam day." },
+          ].map((s, i) => (
+            <motion.div key={s.step} initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}
+              className="glass rounded-2xl p-6 text-center hover:shadow-glass transition-shadow">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center mx-auto mb-4">
+                <s.icon size={22} className="text-white" />
+              </div>
+              <span className="text-xs font-bold text-[var(--primary)] tracking-widest">{s.step}</span>
+              <h3 className="font-display font-semibold text-[var(--text-1)] mt-1 mb-2">{s.title}</h3>
+              <p className="text-sm text-[var(--text-2)] leading-relaxed">{s.desc}</p>
             </motion.div>
           ))}
         </div>
       </section>
 
-      {/* Features — Bento Grid */}
-      <section id="features" className="py-24 px-6">
-        <div className="max-w-6xl mx-auto">
-          <motion.div {...fadeUp} className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Everything you need to excel</h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">A complete AI-first learning platform built for modern students and teachers.</p>
-          </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {features.map((f, i) => (
-              <motion.div key={f.title} {...fadeUp} transition={{ delay: i * 0.08 }} className={`bento-card hover:shadow-xl group ${f.span}`}>
-                <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${f.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <f.icon className="h-6 w-6 text-white" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{f.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section id="how-it-works" className="py-24 px-6 bg-muted/20">
-        <div className="max-w-5xl mx-auto">
-          <motion.div {...fadeUp} className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
-            <p className="text-muted-foreground text-lg">Get started in minutes with our RAG-powered pipeline.</p>
-          </motion.div>
-          <div className="grid md:grid-cols-4 gap-6">
-            {steps.map((s, i) => (
-              <motion.div key={s.step} {...fadeUp} transition={{ delay: i * 0.1 }} className="relative">
-                <div className="text-5xl font-black text-muted/40 mb-3">{s.step}</div>
-                <h3 className="font-semibold mb-2">{s.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{s.desc}</p>
-                {i < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-6 -right-3 text-muted-foreground">→</div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+      {/* Features */}
+      <section id="features" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
+          <h2 className="font-display text-4xl font-bold text-[var(--text-1)]">Everything you need to excel</h2>
+          <p className="text-[var(--text-2)] mt-3 max-w-xl mx-auto">Built for serious students who want AI-powered tools that actually work with their curriculum.</p>
+        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {features.map((f, i) => (
+            <motion.div key={f.title}
+              initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
+              className="glass rounded-2xl p-5 hover:shadow-glass transition-shadow"
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${colorBg[f.color]}`}>
+                <f.icon size={20} className={colorText[f.color]} />
+              </div>
+              <h3 className="font-display font-semibold text-[var(--text-1)] mb-2">{f.title}</h3>
+              <p className="text-sm text-[var(--text-2)] leading-relaxed mb-3">{f.desc}</p>
+              <ul className="space-y-1">
+                {f.bullets.map((b, j) => (
+                  <li key={j} className="flex items-start gap-2 text-xs text-[var(--text-3)]">
+                    <Check size={11} className="text-emerald-500 mt-0.5 shrink-0" />{b}
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          ))}
         </div>
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-24 px-6">
-        <div className="max-w-5xl mx-auto">
-          <motion.div {...fadeUp} className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Loved by students & teachers</h2>
-          </motion.div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <motion.div key={t.name} {...fadeUp} transition={{ delay: i * 0.1 }} className="bento-card">
-                <div className="flex mb-4">
-                  {Array.from({ length: t.rating }).map((_, j) => (
-                    <Star key={j} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  ))}
+      <section id="testimonials" className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
+          <h2 className="font-display text-4xl font-bold text-[var(--text-1)]">Loved by students</h2>
+        </motion.div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {testimonials.map((t, i) => (
+            <motion.div key={t.name}
+              initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}
+              className="glass rounded-2xl p-5 space-y-4"
+            >
+              <div className="flex gap-0.5">
+                {Array.from({ length: t.rating }).map((_, j) => <Star key={j} size={14} className="text-amber-400 fill-amber-400" />)}
+              </div>
+              <p className="text-sm text-[var(--text-1)] leading-relaxed">"{t.text}"</p>
+              <div className="flex items-center gap-3">
+                <img src={t.avatar} alt={t.name} className="w-9 h-9 rounded-full" />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-1)]">{t.name}</p>
+                  <p className="text-xs text-[var(--text-3)]">{t.role}</p>
                 </div>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-4">"{t.text}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold">
-                    {t.name.split(' ').map(n => n[0]).join('')}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.role}</p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="py-24 px-6 bg-muted/20">
-        <div className="max-w-2xl mx-auto">
-          <motion.div {...fadeUp} className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Frequently asked questions</h2>
-          </motion.div>
-          <div className="space-y-3">
-            {faqs.map((faq, i) => (
-              <motion.div key={i} {...fadeUp} transition={{ delay: i * 0.05 }} className="border border-border rounded-xl overflow-hidden">
-                <button
-                  className="w-full flex items-center justify-between px-5 py-4 text-left text-sm font-medium hover:bg-muted/50 transition-colors"
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                >
-                  {faq.q}
-                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
-                </button>
-                {openFaq === i && (
-                  <div className="px-5 pb-4 text-sm text-muted-foreground border-t border-border pt-3">
-                    {faq.a}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </section>
 
       {/* CTA */}
-      <section className="py-24 px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <motion.div {...fadeUp} className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-3xl p-12 text-white">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Start your AI learning journey today</h2>
-            <p className="text-white/80 text-lg mb-8">Free forever for students. Join thousands of learners already using EduAI.</p>
-            <div className="flex items-center justify-center gap-4 flex-wrap">
-              <Link to="/register">
-                <Button size="lg" className="bg-white text-violet-700 hover:bg-white/90 shadow-xl">
-                  Get Started — It's Free <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-          </motion.div>
-        </div>
+      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+        <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          className="glass rounded-3xl p-12 text-center relative overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-gradient-primary opacity-5" />
+          <GraduationCap size={40} className="mx-auto text-primary-500 mb-4" />
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)] mb-3">Ready to transform how you study?</h2>
+          <p className="text-[var(--text-2)] mb-6 max-w-lg mx-auto">Join thousands of students using StudyBuddy to study smarter, not harder.</p>
+          <Link to="/register" className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-gradient-primary text-white font-semibold hover:shadow-lift transition-shadow">
+            Get started for free <ArrowRight size={16} />
+          </Link>
+        </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-12 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center">
-                <Brain className="h-3.5 w-3.5 text-white" />
-              </div>
-              <span className="font-bold gradient-text">EduAI</span>
-            </div>
-            <div className="flex gap-6 text-sm text-muted-foreground">
-              <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">Contact</a>
-              <a href="https://github.com" className="hover:text-foreground transition-colors flex items-center gap-1">
-                <Github className="h-4 w-4" /> GitHub
-              </a>
-            </div>
+      <footer className="border-t border-[var(--border)] py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center gap-2 sm:justify-between text-sm text-[var(--text-3)]">
+          <div className="flex items-center gap-2">
+            <Logo size={24} />
+            <span className="font-display font-bold text-[var(--text-2)]">StudyBuddy</span>
           </div>
-          <p className="text-center text-xs text-muted-foreground mt-8">
-            © {new Date().getFullYear()} EduAI. Built with ❤️ for students.
-          </p>
+          <p>© 2025 StudyBuddy. Built for students, by students.</p>
         </div>
       </footer>
     </div>

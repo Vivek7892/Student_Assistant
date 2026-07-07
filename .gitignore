@@ -1,0 +1,29 @@
+# Secrets
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+
+# Django
+backend/staticfiles/
+backend/media/
+backend/chroma_db/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/dev.log
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp

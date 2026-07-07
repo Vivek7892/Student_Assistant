@@ -1,5 +1,6 @@
+// ── Auth ──────────────────────────────────────────────────────────────────────
 export interface User {
-  id: string
+  id: number
   email: string
   first_name: string
   last_name: string
@@ -7,180 +8,191 @@ export interface User {
   role: 'student' | 'teacher' | 'admin'
   avatar?: string
   is_verified: boolean
-  oauth_provider?: string
-  created_at: string
-  student_profile?: StudentProfile
-  teacher_profile?: TeacherProfile
+  bio?: string
+  university?: string
+  major?: string
+  gpa?: number
+  streak?: number
+  xp?: number
+  level?: number
 }
 
-export interface StudentProfile {
-  usn?: string
-  department: string
-  current_semester: number
-  skills: string[]
-  learning_interests: string[]
-  resume_url?: string
-  bio: string
-}
-
-export interface TeacherProfile {
-  department: string
-  qualification: string
-  experience_years: number
-  subjects_handled: string[]
-  bio: string
-}
-
-export interface AuthTokens {
-  access: string
-  refresh: string
-}
-
-export interface AuthState {
-  user: User | null
-  tokens: AuthTokens | null
-  isAuthenticated: boolean
-  isLoading: boolean
-}
-
+// ── Courses ───────────────────────────────────────────────────────────────────
 export interface Semester {
-  id: string
+  id: number
   name: string
-  number: number
-  department: string
-  academic_year: string
-  description: string
+  start_date: string
+  end_date: string
   is_active: boolean
-  subjects_count: number
-  created_at: string
+  progress: number
+  subjects: Subject[]
 }
 
 export interface Subject {
-  id: string
-  semester: string
+  id: number
   name: string
   code: string
-  description: string
+  instructor: string
   credits: number
-  teacher?: string
-  teacher_name?: string
+  color: string
+  progress: number
+  grade?: string
   materials_count: number
-  is_active: boolean
+  next_class?: string
+  semester: number
 }
 
-export interface StudyMaterial {
-  id: string
-  subject: string
+export interface Material {
+  id: number
+  name: string
+  file: string
+  file_type: 'pdf' | 'doc' | 'audio' | 'video' | 'other'
+  file_size: string
+  subject: number
   subject_name: string
-  title: string
-  description: string
-  material_type: 'notes' | 'assignment' | 'pyq' | 'reference' | 'syllabus' | 'other'
-  file_url: string
-  file_name: string
-  file_size: number
-  file_type: string
-  uploaded_by_name: string
+  uploaded_at: string
+  page_count?: number
+  summary?: string
   is_processed: boolean
-  download_count: number
-  created_at: string
 }
 
+// ── AI ────────────────────────────────────────────────────────────────────────
 export interface ChatSession {
-  id: string
-  subject?: string
+  id: number
   title: string
-  is_active: boolean
   created_at: string
   updated_at: string
-  message_count: number
-  last_message?: ChatMessage
-  messages?: ChatMessage[]
+  messages: ChatMessage[]
 }
 
 export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant' | 'system'
+  id: number
+  role: 'user' | 'assistant'
   content: string
-  sources: Array<{ content: string; metadata: Record<string, string> }>
-  tokens_used: number
+  sources: string[]
   created_at: string
 }
 
 export interface Quiz {
-  id: string
-  subject: string
+  id: number
   title: string
-  description: string
+  subject: number
+  subject_name: string
   difficulty: 'easy' | 'medium' | 'hard'
   questions: QuizQuestion[]
-  time_limit_minutes: number
-  is_ai_generated: boolean
-  is_published: boolean
-  attempts_count: number
-  created_at: string
+  score?: number
+  completed_at?: string
+  time_spent?: string
 }
 
 export interface QuizQuestion {
+  id: number
   question: string
   options: string[]
-  correct_answer: string
+  correct: number
   explanation: string
 }
 
-export interface StudyPlan {
-  id: string
-  student: string
-  subject?: string
+export interface FlashcardDeck {
+  id: number
   title: string
-  plan_data: Record<string, unknown>
-  start_date: string
-  end_date: string
-  is_active: boolean
-  created_at: string
+  subject: number
+  subject_name: string
+  color: string
+  cards: Flashcard[]
+  total_cards: number
+  mastered_cards: number
+  due_today: number
 }
 
 export interface Flashcard {
-  id: string
-  subject: string
+  id: number
+  front: string
+  back: string
+  mastered: boolean
+  next_review?: string
+}
+
+export interface StudyPlan {
+  id: number
   title: string
-  cards: Array<{ front: string; back: string }>
-  is_ai_generated: boolean
+  content: string
   created_at: string
 }
 
+// ── Assignments ───────────────────────────────────────────────────────────────
 export interface Assignment {
-  id: string
-  subject: string
-  subject_name: string
+  id: number
   title: string
   description: string
+  subject: number
+  subject_name: string
   due_date: string
-  max_marks: number
-  attachment_url?: string
-  status: 'draft' | 'published' | 'closed'
-  submissions_count: number
-  created_at: string
+  priority: 'low' | 'medium' | 'high'
+  type: 'assignment' | 'project' | 'lab' | 'quiz' | 'meeting'
+  submission?: Submission
 }
 
+export interface Submission {
+  id: number
+  file?: string
+  text?: string
+  submitted_at: string
+  grade?: number
+  feedback?: string
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+export interface StudentAnalytics {
+  total_study_hours: number
+  avg_quiz_score: number
+  streak: number
+  xp: number
+  weekly_activity: WeeklyActivity[]
+  subject_mastery: SubjectMastery[]
+  monthly_progress: MonthlyProgress[]
+}
+
+export interface WeeklyActivity {
+  day: string
+  hours: number
+  quizzes: number
+  flashcards: number
+}
+
+export interface SubjectMastery {
+  subject: string
+  score: number
+  fullMark: number
+}
+
+export interface MonthlyProgress {
+  month: string
+  score: number
+  target: number
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
 export interface Notification {
-  id: string
+  id: number
+  type: 'deadline' | 'ai' | 'streak' | 'grade' | 'reminder'
   title: string
-  message: string
-  notification_type: 'info' | 'success' | 'warning' | 'error'
-  is_read: boolean
-  link?: string
+  body: string
+  read: boolean
   created_at: string
 }
 
-export interface AnalyticsData {
-  quiz_stats: { total: number; avg_score: number }
-  submissions_count: number
-  graded_submissions: number
-  chat_sessions_count: number
-  recent_quiz_scores: Array<{ quiz__title: string; score: number; completed_at: string }>
-  avg_assignment_score: number
+// ── Files ─────────────────────────────────────────────────────────────────────
+export interface UploadedFile {
+  id: number
+  name: string
+  url: string
+  size: number
+  content_type: string
+  uploaded_at: string
 }
 
+// ── API Responses ─────────────────────────────────────────────────────────────
 export interface PaginatedResponse<T> {
   count: number
   next: string | null
@@ -188,4 +200,7 @@ export interface PaginatedResponse<T> {
   results: T[]
 }
 
-export type Theme = 'light' | 'dark' | 'system'
+export interface ApiError {
+  detail?: string
+  [key: string]: unknown
+}

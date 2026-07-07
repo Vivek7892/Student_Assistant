@@ -1,54 +1,5 @@
 from rest_framework import serializers
-from .models import ChatSession, ChatMessage, Quiz, QuizAttempt, Flashcard, StudyPlan
-
-
-class ChatMessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ChatMessage
-        fields = ['id', 'role', 'content', 'sources', 'tokens_used', 'created_at']
-        read_only_fields = ['id', 'created_at', 'tokens_used', 'sources']
-
-
-class ChatSessionSerializer(serializers.ModelSerializer):
-    messages = ChatMessageSerializer(many=True, read_only=True)
-    last_message = serializers.SerializerMethodField()
-    message_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ChatSession
-        fields = ['id', 'subject', 'title', 'is_active', 'created_at', 'updated_at', 'messages', 'last_message', 'message_count']
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_last_message(self, obj):
-        msg = obj.messages.order_by('-created_at').first()
-        return ChatMessageSerializer(msg).data if msg else None
-
-    def get_message_count(self, obj):
-        return obj.messages.count()
-
-
-class ChatSessionListSerializer(serializers.ModelSerializer):
-    last_message = serializers.SerializerMethodField()
-    message_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = ChatSession
-        fields = ['id', 'subject', 'title', 'is_active', 'created_at', 'updated_at', 'last_message', 'message_count']
-
-    def get_last_message(self, obj):
-        msg = obj.messages.order_by('-created_at').first()
-        return ChatMessageSerializer(msg).data if msg else None
-
-    def get_message_count(self, obj):
-        return obj.messages.count()
-
-
-class ChatRequestSerializer(serializers.Serializer):
-    message = serializers.CharField()
-    session_id = serializers.UUIDField(required=False)
-    subject_id = serializers.UUIDField(required=False)
-    material_id = serializers.UUIDField(required=False)
-    language = serializers.ChoiceField(choices=['english', 'kannada'], default='english')
+from .models import Quiz, QuizAttempt, Flashcard, StudyPlan
 
 
 class QuizSerializer(serializers.ModelSerializer):
@@ -88,9 +39,9 @@ class StudyPlanSerializer(serializers.ModelSerializer):
 
 class GenerateQuizSerializer(serializers.Serializer):
     material_id = serializers.UUIDField()
-    num_questions = serializers.IntegerField(default=10, min_value=5, max_value=30)
+    num_questions = serializers.IntegerField(default=5, min_value=1, max_value=30)
     difficulty = serializers.ChoiceField(choices=['easy', 'medium', 'hard'], default='medium')
-    title = serializers.CharField(required=False)
+    title = serializers.CharField(required=False, allow_blank=True)
 
 
 class GenerateFlashcardsSerializer(serializers.Serializer):

@@ -24,7 +24,6 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         STUDENT = 'student', 'Student'
-        TEACHER = 'teacher', 'Teacher'
         ADMIN = 'admin', 'Admin'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -61,11 +60,18 @@ class StudentProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
     usn = models.CharField(max_length=20, unique=True, blank=True, null=True)
     department = models.CharField(max_length=100, blank=True)
+    university = models.CharField(max_length=200, blank=True)
+    major = models.CharField(max_length=200, blank=True)
+    gpa = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     current_semester = models.PositiveIntegerField(default=1)
     skills = models.JSONField(default=list, blank=True)
     learning_interests = models.JSONField(default=list, blank=True)
     resume_url = models.URLField(blank=True, null=True)
     bio = models.TextField(blank=True)
+    xp = models.PositiveIntegerField(default=0)
+    level = models.PositiveIntegerField(default=1)
+    streak = models.PositiveIntegerField(default=0)
+    last_study_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -85,6 +91,21 @@ class TeacherProfile(models.Model):
 
     class Meta:
         db_table = 'teacher_profiles'
+
+
+class UserPreferences(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
+    dark_mode = models.BooleanField(default=False)
+    notify_deadlines = models.BooleanField(default=True)
+    notify_streaks = models.BooleanField(default=True)
+    notify_grades = models.BooleanField(default=True)
+    notify_ai = models.BooleanField(default=False)
+    ai_contextual = models.BooleanField(default=True)
+    ai_suggestions = models.BooleanField(default=True)
+    ai_auto_summarize = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'user_preferences'
 
 
 class EmailVerificationToken(models.Model):

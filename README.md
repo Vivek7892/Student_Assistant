@@ -9,11 +9,12 @@ A production-ready, full-stack AI learning platform with RAG pipeline, role-base
 | Layer | Tech |
 |-------|------|
 | Frontend | React 18 + TypeScript + Tailwind CSS |
-| Backend | Django 4.2 + DRF |
-| Database | Supabase PostgreSQL |
-| Auth | JWT + OAuth (Google, GitHub) |
-| AI/RAG | LangChain + OpenAI + ChromaDB |
-| File Storage | Supabase Storage |
+| Backend | Django 4.2 + DRF + Django Channels |
+| Database | MySQL 8.0 |
+| Auth | JWT + Google OAuth |
+| AI/RAG | LangChain + Gemini 2.0 Flash + ChromaDB |
+| Chat History | MongoDB Atlas |
+| File Storage | Local media / Cloudflare R2 |
 | Queue | Celery + Redis |
 | Realtime | Django Channels (WebSocket) |
 
@@ -31,27 +32,18 @@ Student-Assistant/
 │   │   ├── assignments/    # Assignments & submissions
 │   │   ├── analytics/      # Analytics views
 │   │   ├── notifications/  # WebSocket notifications
-│   │   └── files/          # Supabase file upload
+│   │   └── files/          # File upload + Google Drive sync
 │   ├── config/             # Django settings, URLs, ASGI, Celery
+│   ├── core/               # MongoDB client
 │   └── requirements.txt
 │
 ├── frontend/
 │   ├── src/
 │   │   ├── api/            # React Query hooks
-│   │   ├── components/
-│   │   │   ├── ai/         # ChatInterface
-│   │   │   ├── layout/     # Sidebar, TopBar, DashboardLayout
-│   │   │   ├── shared/     # ErrorBoundary, ProtectedRoute
-│   │   │   └── ui/         # Button, Card, Input, Badge, etc.
-│   │   ├── pages/
-│   │   │   ├── landing/    # Landing page
-│   │   │   ├── auth/       # Login, Register
-│   │   │   ├── student/    # Dashboard, Chat, Quizzes, Flashcards, Analytics, Profile
-│   │   │   ├── teacher/    # Dashboard
-│   │   │   └── admin/      # Dashboard
+│   │   ├── components/     # UI components
+│   │   ├── pages/          # App pages
 │   │   ├── store/          # Zustand (auth, theme)
-│   │   ├── types/          # TypeScript interfaces
-│   │   └── lib/            # api.ts (axios), utils.ts
+│   │   └── lib/            # axios client, utils
 │   └── package.json
 │
 └── docker-compose.yml
@@ -59,7 +51,7 @@ Student-Assistant/
 
 ---
 
-## Quick Start
+## Quick Start (Local Dev)
 
 ### Backend
 
@@ -69,7 +61,6 @@ python -m venv venv
 venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 
-# Copy .env
 copy .env.example .env
 # Fill in your keys in .env
 
@@ -86,10 +77,38 @@ npm install
 npm run dev
 ```
 
-### With Docker
+---
+
+## Docker Deployment
+
+### 1. Configure environment
 
 ```bash
-docker-compose up --build
+# Backend
+copy backend\.env.example backend\.env
+# Edit backend\.env — set SECRET_KEY, DB_PASSWORD, GEMINI_API_KEY, MONGO_URI, etc.
+
+# Frontend
+copy frontend\.env.example frontend\.env
+# VITE_API_URL should be empty for Docker (nginx proxies /api)
+```
+
+### 2. Build and run
+
+```bash
+docker-compose up --build -d
+```
+
+Services:
+- Frontend: http://localhost (port 80)
+- Backend API: http://localhost:8000 (or via nginx proxy at /api)
+- MySQL: port 3306
+- Redis: port 6379
+
+### 3. Create superuser
+
+```bash
+docker-compose exec backend python manage.py createsuperuser
 ```
 
 ---
@@ -114,10 +133,11 @@ docker-compose up --build
 | POST | `/api/ai/study-plans/generate/` | AI study plan |
 | POST | `/api/ai/summarize/` | Document summary |
 | GET | `/api/analytics/student/` | Student analytics |
-| GET | `/api/analytics/teacher/` | Teacher analytics |
 | GET | `/api/analytics/admin/` | Admin analytics |
 | GET | `/api/notifications/` | Notifications list |
-| POST | `/api/files/upload/` | File upload to Supabase |
+| POST | `/api/files/upload/` | File upload |
+
+WebSocket: `ws://host/ws/chat/?token=<jwt>`
 
 ---
 
@@ -128,31 +148,16 @@ PDF/DOCX/PPTX/TXT
       ↓
 DocumentProcessor.extract_text()
       ↓
-RecursiveCharacterTextSplitter (1000 chars, 200 overlap)
+RecursiveCharacterTextSplitter (512 token chunks, 64 overlap)
       ↓
-OpenAIEmbeddings → ChromaDB (persisted per material)
+Gemini text-embedding-004 → ChromaDB (persisted per material)
       ↓
-ConversationalRetrievalChain (retrieves top-5 chunks)
+MMR retrieval (top-6 chunks)
       ↓
-GPT-4o-mini generates contextual answer
+Gemini 2.0 Flash Lite generates contextual answer
       ↓
-Response + source citations returned
+Response + source citations returned (streaming via WebSocket)
 ```
-
----
-
-## Roles & Permissions
-
-| Feature | Student | Teacher | Admin |
-|---------|---------|---------|-------|
-| View materials | ✅ | ✅ | ✅ |
-| Upload materials | ❌ | ✅ | ✅ |
-| AI Chat | ✅ | ✅ | ✅ |
-| Generate quizzes | ✅ | ✅ | ✅ |
-| Create assignments | ❌ | ✅ | ✅ |
-| Grade submissions | ❌ | ✅ | ✅ |
-| User management | ❌ | ❌ | ✅ |
-| Platform analytics | ❌ | ❌ | ✅ |
 
 ---
 
@@ -161,18 +166,20 @@ Response + source citations returned
 See `backend/.env.example` for all required variables.
 
 Key variables:
-- `OPENAI_API_KEY` — OpenAI API key for GPT-4o-mini
-- `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` — Supabase project credentials
+- `SECRET_KEY` — Django secret key (min 50 chars, random)
+- `GEMINI_API_KEY` — Google AI Studio key (starts with `AIza`)
+- `MONGO_URI` — MongoDB Atlas connection string
+- `DB_PASSWORD` — MySQL password
 - `GOOGLE_CLIENT_ID/SECRET` — Google OAuth
-- `GITHUB_CLIENT_ID/SECRET` — GitHub OAuth
-- `DATABASE_URL` — PostgreSQL connection string
+- `CORS_ALLOWED_ORIGINS` — Comma-separated allowed frontend origins
 
 ---
 
-## Deployment
+## Deployment Targets
 
-- Backend: Deploy on Railway, Render, or EC2 with Gunicorn + Uvicorn workers
-- Frontend: Deploy on Vercel or Netlify (set `VITE_API_URL` env)
-- Database: Supabase managed PostgreSQL
+- Backend: Railway, Render, or EC2 with `gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker`
+- Frontend: Vercel, Netlify, or Docker (set `VITE_API_URL` to backend URL if not same-origin)
+- Database: PlanetScale, Railway MySQL, or self-hosted MySQL 8
 - Redis: Upstash Redis or Railway Redis
-- ChromaDB: Persisted on server volume or migrate to Pinecone for serverless
+- MongoDB: MongoDB Atlas (free tier works)
+- ChromaDB: Persisted on server volume (or migrate to Pinecone for serverless)
