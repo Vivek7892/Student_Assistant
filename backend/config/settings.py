@@ -100,18 +100,19 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
+        'ENGINE': 'django.db.backends.postgresql',
         'NAME': env('DB_NAME', 'student_assistant'),
-        'USER': env('DB_USER', 'root'),
+        'USER': env('DB_USER', 'postgres'),
         'PASSWORD': env('DB_PASSWORD', ''),
         'HOST': env('DB_HOST', '127.0.0.1'),
-        'PORT': env('DB_PORT', '3306'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
+        'PORT': env('DB_PORT', '5432'),
     }
 }
+
+# Render provides DATABASE_URL — override individual vars if present
+if os.environ.get('DATABASE_URL'):
+    import dj_database_url
+    DATABASES['default'] = dj_database_url.config(conn_max_age=600, ssl_require=not DEBUG)
 
 AUTH_USER_MODEL = 'accounts.User'
 
