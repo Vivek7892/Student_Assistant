@@ -25,8 +25,8 @@ def env_list(key, default=''):
 SECRET_KEY = env('SECRET_KEY', 'django-insecure-fallback-key-change-in-production')
 DEBUG = env_bool('DEBUG', True)
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1')
-# Allow all Render subdomains automatically
-if not DEBUG:
+# Always allow Render subdomains
+if '.onrender.com' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS += ['.onrender.com']
 
 DJANGO_APPS = [
