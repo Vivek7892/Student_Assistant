@@ -2,14 +2,20 @@ import os
 import uuid
 import mimetypes
 import requests
+from urllib.parse import urlparse
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.utils import timezone
+from django.utils.text import get_valid_filename
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, serializers, viewsets
+from rest_framework import status, serializers, viewsets, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.tokens import AccessToken
 from .models import UploadedFile, GoogleDriveToken
 
 ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.txt'}
@@ -46,13 +52,56 @@ CLOUDINARY_RESOURCE_TYPE = {
     '.wav':  'raw',
 }
 
-def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder: str = 'student_assistant') -> str | None:
+def _cloudinary_configured() -> bool:
+    cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', '')
+    return bool(cloud_name and cloud_name != 'your-cloud-name')
+
+
+def _cloudinary_inline_url(url: str, resource_type: str) -> str:
+    """Return a Cloudinary URL suitable for in-browser document preview."""
+    if not url or resource_type != 'raw' or '/upload/' not in url:
+        return url
+    url = url.replace('fl_attachment:false,fl_inline/', 'fl_inline/')
+    if '/upload/fl_inline/' in url:
+        return url
+    return url.replace('/upload/', '/upload/fl_inline/', 1)
+
+
+def _cloudinary_public_id_from_url(url: str, ext: str = '') -> str:
     """
-    Upload bytes to Cloudinary. Returns the secure_url or None on failure.
+    Extract Cloudinary public_id from a delivery URL.
+    Handles URLs that include transformations such as fl_inline before /v123/.
+    """
+    if not url or 'cloudinary.com' not in url:
+        return ''
+    try:
+        parts = [p for p in urlparse(url).path.split('/') if p]
+        upload_idx = parts.index('upload')
+        public_parts = parts[upload_idx + 1:]
+        transform_prefixes = ('a_', 'b_', 'c_', 'd_', 'e_', 'f_', 'fl_', 'g_', 'h_', 'l_', 'q_', 'r_', 't_', 'w_', 'x_', 'y_', 'z_')
+        while public_parts and (
+            ',' in public_parts[0]
+            or ':' in public_parts[0]
+            or public_parts[0].startswith(transform_prefixes)
+        ):
+            public_parts = public_parts[1:]
+        if public_parts and public_parts[0].startswith('v') and public_parts[0][1:].isdigit():
+            public_parts = public_parts[1:]
+        public_id = '/'.join(public_parts)
+        resource_type = CLOUDINARY_RESOURCE_TYPE.get(ext.lower(), 'raw')
+        if resource_type != 'raw' and '.' in public_id:
+            public_id = public_id.rsplit('.', 1)[0]
+        return public_id
+    except Exception:
+        return ''
+
+
+def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder: str = 'student_assistant') -> dict | None:
+    """
+    Upload bytes to Cloudinary. Returns Cloudinary metadata or None on failure.
     Uses 'raw' resource_type for documents, 'image'/'video' for media.
     """
-    cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', '')
-    if not cloud_name or cloud_name == 'your-cloud-name':
+    if not _cloudinary_configured():
         return None
     try:
         import cloudinary.uploader
@@ -66,11 +115,12 @@ def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder:
             use_filename=False,
             overwrite=False,
         )
-        url = result.get('secure_url')
-        # Make raw files (PDFs, DOCX, etc.) viewable inline in the browser
-        if url and resource_type == 'raw' and '/upload/' in url:
-            url = url.replace('/upload/', '/upload/fl_attachment:false,fl_inline/')
-        return url
+        url = _cloudinary_inline_url(result.get('secure_url') or '', resource_type)
+        return {
+            'url': url,
+            'public_id': result.get('public_id') or public_id,
+            'resource_type': resource_type,
+        }
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f'[Cloudinary] upload failed: {e}')
@@ -79,8 +129,7 @@ def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder:
 
 def _delete_from_cloudinary(public_id: str, ext: str):
     """Delete a Cloudinary asset by public_id."""
-    cloud_name = getattr(settings, 'CLOUDINARY_CLOUD_NAME', '')
-    if not cloud_name or cloud_name == 'your-cloud-name':
+    if not _cloudinary_configured() or not public_id:
         return
     try:
         import cloudinary.uploader
@@ -88,6 +137,13 @@ def _delete_from_cloudinary(public_id: str, ext: str):
         cloudinary.uploader.destroy(public_id, resource_type=resource_type)
     except Exception:
         pass
+
+
+def delete_cloudinary_file(public_url: str, file_name: str = ''):
+    """Best-effort delete for a Cloudinary-backed uploaded document."""
+    ext = os.path.splitext(file_name or urlparse(public_url).path)[1].lower()
+    public_id = _cloudinary_public_id_from_url(public_url, ext)
+    _delete_from_cloudinary(public_id, ext)
 
 
 class UploadedFileSerializer(serializers.ModelSerializer):
@@ -272,33 +328,13 @@ class FileUploadView(APIView):
         storage_used  = 'local'
 
         # ── 1. Try Cloudinary first ───────────────────────────────────────────
-        cloudinary_url = _upload_to_cloudinary(
+        cloudinary_upload = _upload_to_cloudinary(
             file_content, file.name, ext,
             folder=f'student_assistant/{request.user.id}'
         )
-        if cloudinary_url:
-            public_url   = cloudinary_url
+        if cloudinary_upload:
+            public_url   = cloudinary_upload['url']
             storage_used = 'cloudinary'
-            # Store PDF metadata in MongoDB for fast lookup
-            try:
-                from core.mongo import store_pdf_metadata
-                # Extract public_id from cloudinary URL
-                cld_public_id = ''
-                if '/upload/' in cloudinary_url:
-                    part = cloudinary_url.split('/upload/', 1)[1]
-                    if part.startswith('v') and '/' in part:
-                        part = part.split('/', 1)[1]
-                    cld_public_id = part.rsplit('.', 1)[0]
-                store_pdf_metadata(
-                    material_id='pending',  # updated after material creation
-                    user_id=str(request.user.id),
-                    cloudinary_url=cloudinary_url,
-                    public_id=cld_public_id,
-                    file_name=file.name,
-                    file_size=len(file_content),
-                )
-            except Exception:
-                pass
 
         # ── 2. Try Drive if connected and Cloudinary not used ─────────────────
         if public_url is None:
@@ -335,7 +371,7 @@ class FileUploadView(APIView):
             id=file_id,
             uploaded_by=request.user,
             original_name=file.name,
-            storage_path=storage_path,
+            storage_path=cloudinary_upload['public_id'] if storage_used == 'cloudinary' and cloudinary_upload else storage_path,
             public_url=public_url,
             file_size=len(file_content),
             mime_type=mime_type,
@@ -358,23 +394,20 @@ class FileUploadView(APIView):
             drive_file_id=drive_file_id or '',
         )
 
+        uploaded.material = material
+        uploaded.save(update_fields=['material'])
+
         _process_material_sync(material, local_file_path=_local_path_for(public_url))
 
         # Update MongoDB pdf_metadata with real material_id
         if storage_used == 'cloudinary':
             try:
                 from core.mongo import store_pdf_metadata
-                cld_public_id = ''
-                if '/upload/' in public_url:
-                    part = public_url.split('/upload/', 1)[1]
-                    if part.startswith('v') and '/' in part:
-                        part = part.split('/', 1)[1]
-                    cld_public_id = part.rsplit('.', 1)[0]
                 store_pdf_metadata(
                     material_id=str(material.id),
                     user_id=str(request.user.id),
                     cloudinary_url=public_url,
-                    public_id=cld_public_id,
+                    public_id=cloudinary_upload['public_id'] if cloudinary_upload else '',
                     file_name=file.name,
                     file_size=len(file_content),
                 )
@@ -580,12 +613,12 @@ class DriveSyncView(APIView):
                 try:
                     dl = requests.get(drive_url, timeout=60)
                     dl.raise_for_status()
-                    cld_url = _upload_to_cloudinary(
+                    cld_upload = _upload_to_cloudinary(
                         dl.content, file_name, ext,
                         folder=f'student_assistant/{request.user.id}'
                     )
-                    if cld_url:
-                        public_url = cld_url
+                    if cld_upload:
+                        public_url = cld_upload['url']
                 except Exception:
                     pass  # keep Drive URL
 
@@ -604,6 +637,7 @@ class DriveSyncView(APIView):
 
             UploadedFile.objects.create(
                 uploaded_by=request.user,
+                material=material,
                 original_name=file_name,
                 storage_path=f'drive/{drive_file_id}',
                 public_url=public_url,
@@ -755,14 +789,39 @@ class FileProxyView(APIView):
     Fetches the file from its stored URL and streams it back with inline headers,
     so the browser can render it in an iframe without CORS/X-Frame-Options issues.
     """
+    permission_classes = [permissions.AllowAny]
+
+    def _viewer_user(self, request):
+        if request.user and request.user.is_authenticated:
+            return request.user
+
+        raw_token = request.query_params.get('token', '').strip()
+        if not raw_token:
+            return None
+
+        try:
+            validated = AccessToken(raw_token)
+            user_id = validated.get('user_id')
+            return get_user_model().objects.filter(id=user_id).first()
+        except (InvalidToken, TokenError, Exception):
+            return None
+
     def get(self, request, material_id):
         from apps.courses.models import StudyMaterial
+        user = self._viewer_user(request)
+        if not user:
+            auth_result = JWTAuthentication().authenticate(request)
+            user = auth_result[0] if auth_result else None
+        if not user:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
         try:
-            material = StudyMaterial.objects.get(id=material_id, uploaded_by=request.user)
+            qs = StudyMaterial.objects.all() if getattr(user, 'role', '') == 'admin' else StudyMaterial.objects.filter(uploaded_by=user)
+            material = qs.get(id=material_id)
         except StudyMaterial.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        file_url = material.file_url
+        file_url = _cloudinary_inline_url(material.file_url, 'raw') if material.file_url else ''
         if not file_url:
             return Response({'error': 'No file URL'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -775,12 +834,13 @@ class FileProxyView(APIView):
             content_type = resp.headers.get('Content-Type') or guessed or 'application/octet-stream'
             if 'application/octet-stream' in content_type and guessed:
                 content_type = guessed
-            # Force inline so browser renders instead of downloading
+            disposition = 'attachment' if request.query_params.get('download') == '1' else 'inline'
+            filename = get_valid_filename(material.file_name or f'document.{material.file_type or "bin"}')
             streaming = StreamingHttpResponse(
                 resp.iter_content(chunk_size=8192),
                 content_type=content_type,
             )
-            streaming['Content-Disposition'] = f'inline; filename="{material.file_name}"'
+            streaming['Content-Disposition'] = f'{disposition}; filename="{filename}"'
             streaming['X-Frame-Options'] = 'SAMEORIGIN'
             streaming['Access-Control-Allow-Origin'] = '*'
             return streaming
@@ -802,21 +862,7 @@ class FileViewSet(viewsets.ModelViewSet):
         file_obj = self.get_object()
         # Delete from Cloudinary if stored there
         if file_obj.public_url and 'cloudinary.com' in file_obj.public_url:
-            try:
-                import cloudinary.uploader
-                # Extract public_id from URL: everything between /upload/ and the extension
-                url = file_obj.public_url
-                if '/upload/' in url:
-                    part = url.split('/upload/', 1)[1]
-                    # Strip version prefix (v1234567890/)
-                    if part.startswith('v') and '/' in part:
-                        part = part.split('/', 1)[1]
-                    public_id = part.rsplit('.', 1)[0]
-                    ext = '.' + part.rsplit('.', 1)[-1] if '.' in part else ''
-                    resource_type = CLOUDINARY_RESOURCE_TYPE.get(ext.lower(), 'raw')
-                    cloudinary.uploader.destroy(public_id, resource_type=resource_type)
-            except Exception:
-                pass
+            delete_cloudinary_file(file_obj.public_url, file_obj.original_name)
         else:
             try:
                 default_storage.delete(file_obj.storage_path)

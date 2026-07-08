@@ -95,6 +95,26 @@ class StudyMaterialViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+    def destroy(self, request, *args, **kwargs):
+        material = self.get_object()
+        try:
+            from apps.files.models import UploadedFile
+            from apps.files.views import delete_cloudinary_file
+            related_files = UploadedFile.objects.filter(
+                uploaded_by=request.user,
+                public_url=material.file_url,
+            )
+            if material.file_url and 'cloudinary.com' in material.file_url:
+                delete_cloudinary_file(material.file_url, material.file_name)
+                related_files.delete()
+            else:
+                for uploaded_file in related_files:
+                    uploaded_file.delete()
+        except Exception:
+            pass
+        material.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['post'])
     def increment_download(self, request, pk=None):
         material = self.get_object()

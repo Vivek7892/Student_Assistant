@@ -42,8 +42,9 @@ class StudyMaterialSerializer(serializers.ModelSerializer):
     def get_file_url(self, obj):
         url = obj.file_url or ''
         if 'cloudinary.com' in url and '/raw/upload/' in url:
-            if 'fl_attachment:false,fl_inline' not in url:
-                url = url.replace('/raw/upload/', '/raw/upload/fl_attachment:false,fl_inline/')
+            url = url.replace('fl_attachment:false,fl_inline/', 'fl_inline/')
+            if '/raw/upload/fl_inline/' not in url:
+                url = url.replace('/raw/upload/', '/raw/upload/fl_inline/')
         return url
 
     def validate_subject(self, value):

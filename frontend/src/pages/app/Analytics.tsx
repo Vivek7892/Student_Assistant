@@ -108,7 +108,7 @@ export default function Analytics() {
         <div>
           <div className="flex items-center gap-2">
             <HeartPulse size={24} className="text-primary-500" />
-            <h2 className="font-display text-2xl font-bold text-[var(--text-1)]">Health Dashboard</h2>
+            <h2 className="font-display text-2xl font-bold text-[var(--text-1)]">Dashboard</h2>
           </div>
           <p className="mt-1 text-sm text-[var(--text-2)]">Streaks, learning health, activity, and performance in one place</p>
         </div>

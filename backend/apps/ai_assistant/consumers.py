@@ -186,48 +186,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_or_create_session(self, session_id, message, subject_id):
-        from core.mongo import get_collection
         from apps.courses.models import Subject
-
-        col = get_collection('chat_sessions')
+        from .models import ChatMessage, ChatSession
 
         if session_id:
-            session = col.find_one({'_id': session_id, 'user_id': str(self.user.id)})
-            if session:
-                msgs = session.get('messages', [])
+            try:
+                session = ChatSession.objects.prefetch_related('messages').get(
+                    id=session_id,
+                    user=self.user,
+                )
+                msgs = list(session.messages.all())
                 history = []
                 for i in range(0, len(msgs) - 1, 2):
-                    if msgs[i]['role'] == 'user' and msgs[i + 1]['role'] == 'assistant':
-                        history.append((msgs[i]['content'], msgs[i + 1]['content']))
+                    if msgs[i].role == ChatMessage.Role.USER and msgs[i + 1].role == ChatMessage.Role.ASSISTANT:
+                        history.append((msgs[i].content, msgs[i + 1].content))
                 return session_id, history
+            except (ChatSession.DoesNotExist, ValueError):
+                pass
 
         # Create new session
-        new_id = str(uuid.uuid4())
+        subject = None
         subject_name = None
         if subject_id:
-            subj = Subject.objects.filter(id=subject_id).first()
-            subject_name = subj.name if subj else None
+            subject = Subject.objects.filter(id=subject_id).first()
+            subject_name = subject.name if subject else None
 
-        col.insert_one({
-            '_id': new_id,
-            'user_id': str(self.user.id),
-            'user_email': self.user.email,
-            'subject_id': subject_id,
-            'subject_name': subject_name,
-            'title': message[:60],
-            'messages': [],
-            'created_at': _now(),
-            'updated_at': _now(),
-        })
-        return new_id, []
+        session = ChatSession.objects.create(
+            user=self.user,
+            subject=subject,
+            subject_name=subject_name or '',
+            title=message[:60],
+        )
+        return str(session.id), []
 
     @database_sync_to_async
     def _save_message(self, session_id: str, msg: dict):
-        from core.mongo import get_collection
-        get_collection('chat_sessions').update_one(
-            {'_id': session_id},
-            {'$push': {'messages': msg}, '$set': {'updated_at': _now()}},
+        from .models import ChatMessage, ChatSession
+        session = ChatSession.objects.get(id=session_id, user=self.user)
+        ChatMessage.objects.create(
+            session=session,
+            role=msg['role'],
+            content=msg['content'],
+            sources=msg.get('sources') or [],
         )
+        session.save(update_fields=['updated_at'])
 
     @database_sync_to_async
     def _resolve_collection(self, material_id, subject_id) -> str:

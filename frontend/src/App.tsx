@@ -12,10 +12,13 @@ import Dashboard       from './pages/app/Dashboard'
 import AITutor         from './pages/app/AITutor'
 import Videos          from './pages/app/Videos'
 import Courses         from './pages/app/Courses'
+import Notes           from './pages/app/Notes'
 import Documents       from './pages/app/Documents'
 import Flashcards      from './pages/app/Flashcards'
 import Quizzes         from './pages/app/Quizzes'
 import Planner         from './pages/app/Planner'
+import Pomodoro        from './pages/app/Pomodoro'
+import Goals           from './pages/app/Goals'
 import Calendar        from './pages/app/Calendar'
 import Analytics       from './pages/app/Analytics'
 import Profile         from './pages/app/Profile'
@@ -43,10 +46,14 @@ export default function App() {
           <Route path="ai/c/:sessionId" element={<AITutor />} />
           <Route path="videos"        element={<Videos />} />
           <Route path="courses"       element={<Courses />} />
+          <Route path="notes"         element={<Notes />} />
           <Route path="documents"     element={<Documents />} />
           <Route path="flashcards"    element={<Flashcards />} />
+          <Route path="quiz"          element={<Quizzes />} />
           <Route path="quizzes"       element={<Quizzes />} />
           <Route path="planner"       element={<Planner />} />
+          <Route path="pomodoro"      element={<Pomodoro />} />
+          <Route path="goals"         element={<Goals />} />
           <Route path="calendar"      element={<Calendar />} />
           <Route path="analytics"     element={<Analytics />} />
           <Route path="profile"       element={<Profile />} />
@@ -57,6 +64,14 @@ export default function App() {
         <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AppShell /></ProtectedRoute>}>
           <Route index element={<AdminDashboard />} />
         </Route>
+
+        <Route path="/notes"      element={<Navigate to="/app/notes" replace />} />
+        <Route path="/documents"  element={<Navigate to="/app/documents" replace />} />
+        <Route path="/quiz"       element={<Navigate to="/app/quiz" replace />} />
+        <Route path="/flashcards" element={<Navigate to="/app/flashcards" replace />} />
+        <Route path="/planner"    element={<Navigate to="/app/planner" replace />} />
+        <Route path="/pomodoro"   element={<Navigate to="/app/pomodoro" replace />} />
+        <Route path="/goals"      element={<Navigate to="/app/goals" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -19,7 +19,7 @@ const SUGGESTED = [
   'What are the most important points to remember?',
 ]
 
-// Minimal markdown renderer — bold, inline code, code blocks, bullets, numbered lists
+// Minimal markdown renderer: bold, inline code, code blocks, bullets, numbered lists
 function MarkdownContent({ content }: { content: string }) {
   const lines = content.split('\n')
   const elements: React.ReactNode[] = []
@@ -38,7 +38,7 @@ function MarkdownContent({ content }: { content: string }) {
         i++
       }
       elements.push(
-        <pre key={i} className="my-2 p-3 rounded-xl bg-[var(--bg)] border border-[var(--border)] overflow-x-auto text-xs font-mono leading-relaxed">
+        <pre key={i} className="my-2 max-w-full overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg)] p-3 text-xs font-mono leading-relaxed">
           <code>{codeLines.join('\n')}</code>
         </pre>
       )
@@ -68,7 +68,7 @@ function MarkdownContent({ content }: { content: string }) {
           {items.map((item, j) => (
             <li key={j} className="flex gap-2 text-sm">
               <span className="text-[var(--primary)] mt-1.5 shrink-0">•</span>
-              <span>{renderInline(item)}</span>
+              <span className="min-w-0 break-words">{renderInline(item)}</span>
             </li>
           ))}
         </ul>
@@ -89,7 +89,7 @@ function MarkdownContent({ content }: { content: string }) {
           {items.map((item, j) => (
             <li key={j} className="flex gap-2 text-sm">
               <span className="text-[var(--primary)] shrink-0 font-medium">{j + 1}.</span>
-              <span>{renderInline(item)}</span>
+              <span className="min-w-0 break-words">{renderInline(item)}</span>
             </li>
           ))}
         </ol>
@@ -104,7 +104,7 @@ function MarkdownContent({ content }: { content: string }) {
     }
 
     // Normal paragraph
-    elements.push(<p key={i} className="text-sm leading-relaxed">{renderInline(line)}</p>)
+    elements.push(<p key={i} className="break-words text-sm leading-relaxed">{renderInline(line)}</p>)
     i++
   }
 
@@ -117,7 +117,7 @@ function renderInline(text: string): React.ReactNode {
     if (part.startsWith('**') && part.endsWith('**'))
       return <strong key={i} className="font-semibold text-[var(--text-1)]">{part.slice(2, -2)}</strong>
     if (part.startsWith('`') && part.endsWith('`'))
-      return <code key={i} className="px-1.5 py-0.5 rounded bg-[var(--bg)] border border-[var(--border)] text-xs font-mono text-[var(--primary)]">{part.slice(1, -1)}</code>
+      return <code key={i} className="break-words rounded border border-[var(--border)] bg-[var(--bg)] px-1.5 py-0.5 text-xs font-mono text-[var(--primary)]">{part.slice(1, -1)}</code>
     return part
   })
 }
@@ -235,7 +235,7 @@ export default function AITutor() {
       setMessages(m => [...m, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `⚠️ ${errMsg}`,
+        content: `Warning: ${errMsg}`,
       }])
     } finally {
       setLoading(false)
@@ -289,7 +289,7 @@ export default function AITutor() {
   )
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] -m-4 md:-m-6 overflow-hidden">
+    <div className="flex h-[calc(100dvh-8rem)] min-h-[520px] -m-4 overflow-hidden md:-m-6 md:h-[calc(100vh-3.5rem)]">
       {/* Desktop session sidebar */}
       <div className="hidden md:flex w-56 shrink-0 border-r border-[var(--border)] bg-[var(--surface)]">
         <div className="w-full">
@@ -336,9 +336,9 @@ export default function AITutor() {
           <div className="w-7 h-7 rounded-lg bg-gradient-primary flex items-center justify-center">
             <Bot size={14} className="text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--text-1)]">AI Tutor</p>
-            <p className="text-xs text-[var(--text-3)]">Powered by Gemini 2.0 Flash · RAG on your materials</p>
+            <p className="truncate text-xs text-[var(--text-3)]">Powered by Gemini 2.0 Flash · RAG on your materials</p>
           </div>
         </div>
 
@@ -375,15 +375,15 @@ export default function AITutor() {
                 </div>
               )}
 
-              <div className={cn('max-w-[85%] md:max-w-[75%] space-y-2', m.role === 'user' && 'items-end flex flex-col')}>
+              <div className={cn('max-w-[82%] min-w-0 space-y-2 sm:max-w-[85%] md:max-w-[75%]', m.role === 'user' && 'items-end flex flex-col')}>
                 <div className={cn(
-                  'rounded-2xl px-4 py-3',
+                  'max-w-full overflow-hidden rounded-2xl px-4 py-3',
                   m.role === 'user'
                     ? 'bg-gradient-primary text-white rounded-tr-sm text-sm leading-relaxed'
                     : 'bg-[var(--surface-2)] text-[var(--text-1)] border border-[var(--border)] rounded-tl-sm'
                 )}>
                   {m.role === 'user'
-                    ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    ? <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.content}</p>
                     : <MarkdownContent content={m.content} />
                   }
                 </div>
@@ -439,7 +439,7 @@ export default function AITutor() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              placeholder="Ask about your study materials… (Enter to send, Shift+Enter for newline)"
+              placeholder="Ask about your study materials..."
               rows={1}
               style={{ resize: 'none', minHeight: '24px', maxHeight: '120px' }}
               className="flex-1 bg-transparent text-sm text-[var(--text-1)] placeholder:text-[var(--text-3)] focus:outline-none leading-relaxed"

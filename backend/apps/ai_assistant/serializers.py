@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Quiz, QuizAttempt, Flashcard, StudyPlan
+from .models import Goal, PomodoroSession, Quiz, QuizAttempt, Flashcard, StudyNote, StudyPlan
 
 
 class QuizSerializer(serializers.ModelSerializer):
@@ -35,6 +35,39 @@ class StudyPlanSerializer(serializers.ModelSerializer):
         model = StudyPlan
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'student']
+
+
+class StudyNoteSerializer(serializers.ModelSerializer):
+    token = serializers.UUIDField(source='client_token', read_only=True)
+
+    class Meta:
+        model = StudyNote
+        fields = [
+            'id', 'user', 'subject', 'title', 'subject_label', 'color', 'tags', 'content',
+            'pinned', 'favorite', 'token', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'token', 'created_at', 'updated_at']
+
+
+class GoalSerializer(serializers.ModelSerializer):
+    token = serializers.UUIDField(source='client_token', read_only=True)
+
+    class Meta:
+        model = Goal
+        fields = [
+            'id', 'user', 'title', 'target', 'current', 'unit', 'deadline',
+            'linked_activity', 'token', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'user', 'token', 'created_at', 'updated_at']
+
+
+class PomodoroSessionSerializer(serializers.ModelSerializer):
+    token = serializers.UUIDField(source='client_token', read_only=True)
+
+    class Meta:
+        model = PomodoroSession
+        fields = ['id', 'user', 'subject_label', 'minutes', 'token', 'completed_at']
+        read_only_fields = ['id', 'user', 'token', 'completed_at']
 
 
 class GenerateQuizSerializer(serializers.Serializer):

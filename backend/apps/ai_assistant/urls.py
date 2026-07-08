@@ -6,6 +6,9 @@ router = DefaultRouter()
 router.register('quizzes', views.QuizViewSet, basename='quiz')
 router.register('flashcards', views.FlashcardViewSet, basename='flashcard')
 router.register('study-plans', views.StudyPlanViewSet, basename='study-plan')
+router.register('notes', views.StudyNoteViewSet, basename='note')
+router.register('goals', views.GoalViewSet, basename='goal')
+router.register('pomodoro-sessions', views.PomodoroSessionViewSet, basename='pomodoro-session')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -61,36 +61,6 @@ export default function Semesters() {
     }
   }
 
-  const semester = semesters.find(s => s.id === active)
-
-  if (loading) {
-    return (
-      <div className="space-y-4 max-w-6xl">
-        <Skeleton className="h-10 w-64 rounded-xl" />
-        <Skeleton className="h-28 rounded-2xl" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[0,1,2].map(i => <Skeleton key={i} className="h-44 rounded-2xl" />)}
-        </div>
-      </div>
-    )
-  }
-
-  if (semesters.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center max-w-md mx-auto">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-lift">
-          <GraduationCap size={28} className="text-white" />
-        </div>
-        <h3 className="font-display text-xl font-bold text-[var(--text-1)]">No semesters yet</h3>
-        <p className="text-sm text-[var(--text-2)]">Create your first semester to start organizing your courses and study materials.</p>
-        <Button variant="gradient" className="gap-2" onClick={() => { setShowModal(true); setFormErr('') }}>
-          <Plus size={15} /> Create Semester
-        </Button>
-        {showModal && semesterModal}
-      </div>
-    )
-  }
-
   const semesterModal = (
     <AnimatePresence>
       {showModal && (
@@ -133,6 +103,36 @@ export default function Semesters() {
       )}
     </AnimatePresence>
   )
+
+  const semester = semesters.find(s => s.id === active)
+
+  if (loading) {
+    return (
+      <div className="space-y-4 max-w-6xl">
+        <Skeleton className="h-10 w-64 rounded-xl" />
+        <Skeleton className="h-28 rounded-2xl" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[0,1,2].map(i => <Skeleton key={i} className="h-44 rounded-2xl" />)}
+        </div>
+      </div>
+    )
+  }
+
+  if (semesters.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center max-w-md mx-auto">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-lift">
+          <GraduationCap size={28} className="text-white" />
+        </div>
+        <h3 className="font-display text-xl font-bold text-[var(--text-1)]">No semesters yet</h3>
+        <p className="text-sm text-[var(--text-2)]">Create your first semester to start organizing your courses and study materials.</p>
+        <Button variant="gradient" className="gap-2" onClick={() => { setShowModal(true); setFormErr('') }}>
+          <Plus size={15} /> Create Semester
+        </Button>
+        {showModal && semesterModal}
+      </div>
+    )
+  }
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6 max-w-6xl">

@@ -1,22 +1,25 @@
 import uuid
 import logging
 from datetime import datetime, timezone as dt_tz
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.conf import settings
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Quiz, QuizAttempt, Flashcard, StudyPlan, AIUsageLog
+from .models import (
+    ChatMessage, ChatSession, Goal, PomodoroSession, Quiz, QuizAttempt,
+    Flashcard, StudyNote, StudyPlan, AIUsageLog,
+)
 from .gemini_rag import gemini_rag, doc_processor
 from .serializers import (
     QuizSerializer, QuizAttemptSerializer,
-    FlashcardSerializer, StudyPlanSerializer,
+    FlashcardSerializer, GoalSerializer, PomodoroSessionSerializer, StudyNoteSerializer, StudyPlanSerializer,
     GenerateQuizSerializer, GenerateFlashcardsSerializer,
     SummarizeSerializer, StudyPlanRequestSerializer,
 )
 from apps.courses.models import StudyMaterial, Subject
 from apps.accounts.permissions import IsOwnerOrAdmin
-from core.mongo import get_collection
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +29,12 @@ def _now():
 
 
 def _assert_material_access(material_id, user):
-    """Return material if it exists and user is authenticated."""
+    """Return material only when it belongs to the current user or the user is admin."""
     try:
         mat = StudyMaterial.objects.get(id=material_id)
     except StudyMaterial.DoesNotExist:
+        return None, Response({'error': 'Material not found'}, status=status.HTTP_404_NOT_FOUND)
+    if getattr(user, 'role', '') != 'admin' and mat.uploaded_by_id != user.id:
         return None, Response({'error': 'Material not found'}, status=status.HTTP_404_NOT_FOUND)
     return mat, None
 
@@ -65,34 +70,50 @@ def _read_material_text(mat) -> str:
 
 
 class ChatSessionViewSet(viewsets.ViewSet):
-    """Chat sessions and messages stored in MongoDB."""
+    """User-scoped AI chat sessions stored in the primary database."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _message_payload(self, msg):
+        return {
+            'id': str(msg.id),
+            'role': msg.role,
+            'content': msg.content,
+            'sources': msg.sources or [],
+            'created_at': msg.created_at,
+        }
+
+    def _session_payload(self, session, include_messages=False):
+        payload = {
+            'id': str(session.id),
+            'token': str(session.client_token),
+            'title': session.title,
+            'subject_id': str(session.subject_id) if session.subject_id else None,
+            'subject_name': session.subject_name,
+            'created_at': session.created_at,
+            'updated_at': session.updated_at,
+        }
+        if include_messages:
+            payload['messages'] = [self._message_payload(m) for m in session.messages.all()]
+        return payload
 
     def list(self, request):
-        sessions = list(
-            get_collection('chat_sessions')
-            .find({'user_id': str(request.user.id)}, {'messages': 0})
-            .sort('updated_at', -1)
-            .limit(50)
-        )
-        for s in sessions:
-            s['id'] = s.pop('_id')
-        return Response(sessions)
+        sessions = ChatSession.objects.filter(user=request.user).order_by('-updated_at')[:50]
+        return Response([self._session_payload(s) for s in sessions])
 
     def retrieve(self, request, pk=None):
-        # pk is the session token (UUID string)
-        session = get_collection('chat_sessions').find_one(
-            {'_id': pk, 'user_id': str(request.user.id)}  # strict user scope
-        )
-        if not session:
+        try:
+            session = ChatSession.objects.prefetch_related('messages').get(id=pk, user=request.user)
+        except (ChatSession.DoesNotExist, ValueError):
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
-        session['id'] = session.pop('_id')
-        return Response(session)
+        return Response(self._session_payload(session, include_messages=True))
 
     def destroy(self, request, pk=None):
-        result = get_collection('chat_sessions').delete_one(
-            {'_id': pk, 'user_id': str(request.user.id)}  # only owner can delete
-        )
-        if result.deleted_count == 0:
+        try:
+            deleted, _ = ChatSession.objects.filter(id=pk, user=request.user).delete()
+        except (ValidationError, ValueError):
+            deleted = 0
+        if deleted == 0:
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -108,40 +129,39 @@ class ChatSessionViewSet(viewsets.ViewSet):
         if not message:
             return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        col = get_collection('chat_sessions')
-
         if session_id:
             # Strict ownership: session must belong to this user
-            session = col.find_one({'_id': session_id, 'user_id': str(request.user.id)})
-            if not session:
+            try:
+                session = ChatSession.objects.prefetch_related('messages').get(id=session_id, user=request.user)
+            except (ChatSession.DoesNotExist, ValueError):
                 return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
         else:
-            session_id = str(uuid.uuid4())  # unique token per chat session
             subject_name = None
+            subject = None
             if subject_id:
-                subj = Subject.objects.filter(id=subject_id).first()
-                subject_name = subj.name if subj else None
-            session = {
-                '_id': session_id,
-                'user_id': str(request.user.id),
-                'user_email': request.user.email,
-                'subject_id': subject_id,
-                'subject_name': subject_name,
-                'title': message[:60],
-                'messages': [],
-                'created_at': _now(),
-                'updated_at': _now(),
-            }
-            col.insert_one(session)
+                subject = Subject.objects.filter(id=subject_id).first()
+                subject_name = subject.name if subject else None
+            session = ChatSession.objects.create(
+                user=request.user,
+                subject=subject,
+                subject_name=subject_name or '',
+                title=message[:60],
+            )
+            session_id = str(session.id)
 
-        user_msg = {'id': str(uuid.uuid4()), 'role': 'user', 'content': message, 'sources': [], 'created_at': _now()}
-
-        msgs = session.get('messages', [])
+        msgs = list(session.messages.all())
         history = [
-            (msgs[i]['content'], msgs[i + 1]['content'])
+            (msgs[i].content, msgs[i + 1].content)
             for i in range(0, len(msgs) - 1, 2)
-            if msgs[i]['role'] == 'user' and msgs[i + 1]['role'] == 'assistant'
+            if msgs[i].role == ChatMessage.Role.USER and msgs[i + 1].role == ChatMessage.Role.ASSISTANT
         ]
+
+        user_msg = ChatMessage.objects.create(
+            session=session,
+            role=ChatMessage.Role.USER,
+            content=message,
+            sources=[],
+        )
 
         if material_id:
             mat, err = _assert_material_access(material_id, request.user)
@@ -180,12 +200,13 @@ class ChatSessionViewSet(viewsets.ViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
-        assistant_msg = {'id': str(uuid.uuid4()), 'role': 'assistant', 'content': answer, 'sources': sources, 'created_at': _now()}
-
-        col.update_one(
-            {'_id': session_id},
-            {'$push': {'messages': {'$each': [user_msg, assistant_msg]}}, '$set': {'updated_at': _now()}}
+        assistant_msg = ChatMessage.objects.create(
+            session=session,
+            role=ChatMessage.Role.ASSISTANT,
+            content=answer,
+            sources=sources,
         )
+        session.save(update_fields=['updated_at'])
         AIUsageLog.objects.create(
             user=request.user, action='chat_http',
             tokens_used=tokens, model_used=model,
@@ -196,7 +217,11 @@ class ChatSessionViewSet(viewsets.ViewSet):
             record_activity(request.user, 'ai_session')
         except Exception:
             pass
-        return Response({'session_id': session_id, 'user_message': user_msg, 'assistant_message': assistant_msg})
+        return Response({
+            'session_id': session_id,
+            'user_message': self._message_payload(user_msg),
+            'assistant_message': self._message_payload(assistant_msg),
+        })
 
 
 class QuizViewSet(viewsets.ModelViewSet):
@@ -209,9 +234,9 @@ class QuizViewSet(viewsets.ModelViewSet):
         if user.role == 'admin':
             return Quiz.objects.all()
         # Students see their own quizzes + published quizzes for their subjects
-        return Quiz.objects.filter(created_by=user) | Quiz.objects.filter(
+        return (Quiz.objects.filter(created_by=user) | Quiz.objects.filter(
             subject__semester__enrollments__student=user, is_published=True
-        )
+        )).distinct()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user, is_ai_generated=False)
@@ -228,7 +253,8 @@ class QuizViewSet(viewsets.ModelViewSet):
 
         try:
             text = _read_material_text(mat)
-            questions = gemini_rag.generate_quiz(text, data['num_questions'], data['difficulty'])
+            generated = gemini_rag.generate_quiz(text, data['num_questions'], data['difficulty'])
+            questions = generated['items']
 
             # subject is required by model — use material's subject or create a placeholder
             subject = mat.subject
@@ -253,7 +279,13 @@ class QuizViewSet(viewsets.ModelViewSet):
                 is_ai_generated=True,
                 is_published=True,
             )
-            AIUsageLog.objects.create(user=request.user, action='generate_quiz')
+            AIUsageLog.objects.create(
+                user=request.user,
+                action='generate_quiz',
+                tokens_used=generated.get('tokens_used', 0),
+                model_used=generated.get('model', 'gemini-2.0-flash-lite'),
+                metadata={'quiz_id': str(quiz.id), 'material_id': str(mat.id)},
+            )
             return Response(QuizSerializer(quiz).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f'Quiz generation error: {e}', exc_info=True)
@@ -323,9 +355,9 @@ class FlashcardViewSet(viewsets.ModelViewSet):
         if user.role == 'admin':
             return Flashcard.objects.all()
         if user.role == 'student':
-            return Flashcard.objects.filter(
+            return (Flashcard.objects.filter(
                 subject__semester__enrollments__student=user
-            ) | Flashcard.objects.filter(created_by=user)
+            ) | Flashcard.objects.filter(created_by=user)).distinct()
         return Flashcard.objects.filter(created_by=user)
 
     def perform_create(self, serializer):
@@ -343,7 +375,8 @@ class FlashcardViewSet(viewsets.ModelViewSet):
 
         try:
             text = _read_material_text(mat)
-            cards = gemini_rag.generate_flashcards(text, data['num_cards'])
+            generated = gemini_rag.generate_flashcards(text, data['num_cards'])
+            cards = generated['items']
 
             subject = mat.subject
             if subject is None:
@@ -365,7 +398,13 @@ class FlashcardViewSet(viewsets.ModelViewSet):
                 cards=cards,
                 is_ai_generated=True,
             )
-            AIUsageLog.objects.create(user=request.user, action='generate_flashcards')
+            AIUsageLog.objects.create(
+                user=request.user,
+                action='generate_flashcards',
+                tokens_used=generated.get('tokens_used', 0),
+                model_used=generated.get('model', 'gemini-2.0-flash-lite'),
+                metadata={'flashcard_id': str(flashcard.id), 'material_id': str(mat.id)},
+            )
             try:
                 from core.activity import record_activity
                 record_activity(request.user, 'flashcard_review')
@@ -379,6 +418,7 @@ class FlashcardViewSet(viewsets.ModelViewSet):
 
 class StudyPlanViewSet(viewsets.ModelViewSet):
     serializer_class = StudyPlanSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return StudyPlan.objects.filter(student=self.request.user)
@@ -410,6 +450,57 @@ class StudyPlanViewSet(viewsets.ModelViewSet):
         )
         AIUsageLog.objects.create(user=request.user, action='generate_study_plan')
         return Response(StudyPlanSerializer(study_plan).data, status=status.HTTP_201_CREATED)
+
+
+class StudyNoteViewSet(viewsets.ModelViewSet):
+    serializer_class = StudyNoteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['subject', 'pinned', 'favorite']
+    search_fields = ['title', 'content', 'subject_label']
+
+    def get_queryset(self):
+        return StudyNote.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class GoalViewSet(viewsets.ModelViewSet):
+    serializer_class = GoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ['linked_activity']
+
+    def get_queryset(self):
+        return Goal.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['patch'])
+    def progress(self, request, pk=None):
+        goal = self.get_object()
+        delta = float(request.data.get('delta', 0))
+        goal.current = max(0, min(goal.target, goal.current + delta))
+        goal.save(update_fields=['current', 'updated_at'])
+        return Response(GoalSerializer(goal).data)
+
+
+class PomodoroSessionViewSet(viewsets.ModelViewSet):
+    serializer_class = PomodoroSessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        return PomodoroSession.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        session = serializer.save(user=self.request.user)
+        try:
+            for goal in Goal.objects.filter(user=self.request.user, linked_activity=Goal.LinkedActivity.FOCUS):
+                goal.current = max(0, min(goal.target, goal.current + session.minutes / 60))
+                goal.save(update_fields=['current', 'updated_at'])
+        except Exception:
+            pass
 
 
 class SummarizeView(viewsets.ViewSet):

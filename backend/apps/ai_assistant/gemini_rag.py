@@ -160,6 +160,15 @@ class GeminiRAGPipeline:
         )
 
     @property
+    def _json_config(self) -> types.GenerateContentConfig:
+        return types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=4096,
+            response_mime_type='application/json',
+            safety_settings=self.SAFETY_SETTINGS,
+        )
+
+    @property
     def embeddings(self) -> 'GenAIEmbeddings':
         if not self._embeddings:
             self._embeddings = GenAIEmbeddings(api_key=self._get_api_key())
@@ -339,9 +348,13 @@ ANSWER:"""
         )
         response = self._call_with_retry(
             self.client.models.generate_content,
-            model='gemini-2.0-flash-lite', contents=prompt, config=self._gen_config
+            model='gemini-2.0-flash-lite', contents=prompt, config=self._json_config
         )
-        return self._parse_json(response.text, fallback=[])
+        return {
+            'items': self._parse_json(response.text, fallback=[]),
+            'tokens_used': count_tokens(prompt) + count_tokens(response.text or ''),
+            'model': 'gemini-2.0-flash-lite',
+        }
 
     # ── Flashcard generation ──────────────────────────────────────────────────
 
@@ -355,9 +368,13 @@ ANSWER:"""
         )
         response = self._call_with_retry(
             self.client.models.generate_content,
-            model='gemini-2.0-flash-lite', contents=prompt, config=self._gen_config
+            model='gemini-2.0-flash-lite', contents=prompt, config=self._json_config
         )
-        return self._parse_json(response.text, fallback=[])
+        return {
+            'items': self._parse_json(response.text, fallback=[]),
+            'tokens_used': count_tokens(prompt) + count_tokens(response.text or ''),
+            'model': 'gemini-2.0-flash-lite',
+        }
 
     # ── Summarize ─────────────────────────────────────────────────────────────
 

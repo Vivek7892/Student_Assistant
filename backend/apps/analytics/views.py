@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import permissions
 from apps.accounts.models import User
 from apps.courses.models import Semester, Subject, StudyMaterial, PlannerTask
-from apps.ai_assistant.models import QuizAttempt, AIUsageLog
+from apps.ai_assistant.models import ChatSession, QuizAttempt, AIUsageLog
 from apps.assignments.models import Assignment, AssignmentSubmission
 from apps.analytics.models import DailyActivity, SubjectMastery
 from core.mongo import get_collection
@@ -34,13 +34,8 @@ class StudentAnalyticsView(APIView):
         )
         total_study_hours = round((study_agg['total_minutes'] or 0) / 60, 1)
 
-        # AI sessions and Watch Later count from MongoDB
-        try:
-            chat_sessions_count = get_collection('chat_sessions').count_documents(
-                {'user_id': str(user.id)}
-            )
-        except Exception:
-            chat_sessions_count = 0
+        # AI sessions are stored in the primary database; Watch Later still uses MongoDB.
+        chat_sessions_count = ChatSession.objects.filter(user=user).count()
         try:
             saved_videos_count = get_collection('videos_v2').count_documents(
                 {'user_id': str(user.id)}
@@ -259,7 +254,7 @@ class AdminAnalyticsView(APIView):
         total_users = User.objects.count()
         students = User.objects.filter(role='student').count()
         total_materials = StudyMaterial.objects.count()
-        total_chat_sessions = get_collection('chat_sessions').count_documents({})
+        total_chat_sessions = ChatSession.objects.count()
         ai_requests_today = AIUsageLog.objects.filter(created_at__date=today).count()
 
         # Platform-wide daily activity (last 30 days)
@@ -279,7 +274,7 @@ class AdminAnalyticsView(APIView):
         # Users list with activity
         users = []
         for u in User.objects.filter(role='student').order_by('-created_at')[:100]:
-            chat_count = get_collection('chat_sessions').count_documents({'user_id': str(u.id)})
+            chat_count = ChatSession.objects.filter(user=u).count()
             quiz_count = QuizAttempt.objects.filter(student=u).count()
             material_count = StudyMaterial.objects.filter(uploaded_by=u).count()
             profile = getattr(u, 'student_profile', None)
@@ -297,18 +292,16 @@ class AdminAnalyticsView(APIView):
                 'level': getattr(profile, 'level', 1),
             })
 
-        # Recent chat sessions
-        recent_chats = list(
-            get_collection('chat_sessions')
-            .find({}, {'messages': {'$slice': -1}, '_id': 1, 'user_email': 1,
-                       'title': 1, 'updated_at': 1, 'subject_name': 1})
-            .sort('updated_at', -1)
-            .limit(20)
-        )
-        for c in recent_chats:
-            c['id'] = str(c.pop('_id'))
-            if c.get('updated_at'):
-                c['updated_at'] = c['updated_at'].isoformat()
+        recent_chats = [
+            {
+                'id': str(chat.id),
+                'user_email': chat.user.email,
+                'title': chat.title,
+                'updated_at': chat.updated_at,
+                'subject_name': chat.subject_name,
+            }
+            for chat in ChatSession.objects.select_related('user').order_by('-updated_at')[:20]
+        ]
 
         recent_materials = list(
             StudyMaterial.objects.order_by('-created_at')[:20]

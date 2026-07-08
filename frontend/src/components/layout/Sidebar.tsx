@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Bot, Youtube, FileText, HardDrive,
   CreditCard, Brain, CalendarDays, Calendar, BarChart3,
   User, Settings, Bell, ChevronLeft, Shield, X,
-  BookOpen, ExternalLink,
+  BookOpen, ExternalLink, Timer, Target,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Logo } from '../ui/Logo'
@@ -25,15 +25,18 @@ const navGroups = [
     label: 'Study',
     items: [
       { label: 'Videos',     icon: Youtube,      to: '/app/videos' },
+      { label: 'Notes',      icon: BookOpen,     to: '/app/notes' },
       { label: 'Documents',  icon: FileText,     to: '/app/documents', hasDrive: true },
       { label: 'Flashcards', icon: CreditCard,   to: '/app/flashcards' },
-      { label: 'Quizzes',    icon: Brain,        to: '/app/quizzes' },
+      { label: 'Quiz',       icon: Brain,        to: '/app/quiz' },
     ],
   },
   {
     label: 'Plan',
     items: [
       { label: 'Planner',   icon: CalendarDays, to: '/app/planner' },
+      { label: 'Focus',     icon: Timer,        to: '/app/pomodoro' },
+      { label: 'Goals',     icon: Target,       to: '/app/goals' },
       { label: 'Calendar',  icon: Calendar,     to: '/app/calendar' },
       { label: 'Analytics', icon: BarChart3,    to: '/app/analytics' },
     ],

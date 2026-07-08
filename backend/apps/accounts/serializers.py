@@ -120,8 +120,10 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-        if student_data and hasattr(instance, 'student_profile'):
+
+        if student_data is not None:
+            student_profile, _ = StudentProfile.objects.get_or_create(user=instance)
             for attr, value in student_data.items():
-                setattr(instance.student_profile, attr, value)
-            instance.student_profile.save()
+                setattr(student_profile, attr, value)
+            student_profile.save()
         return instance
