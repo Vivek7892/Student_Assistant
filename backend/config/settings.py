@@ -183,7 +183,9 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    X_FRAME_OPTIONS = 'DENY'
+    # Use SAMEORIGIN so the file proxy iframe works within the same frontend origin.
+    # The proxy view itself sets X-Frame-Options per-response.
+    X_FRAME_OPTIONS = 'SAMEORIGIN'
 
 # Channels — optional, only active if channels is installed
 try:

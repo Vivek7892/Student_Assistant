@@ -58,13 +58,23 @@ def _cloudinary_configured() -> bool:
 
 
 def _cloudinary_inline_url(url: str, resource_type: str) -> str:
-    """Return a Cloudinary URL suitable for in-browser document preview."""
-    if not url or resource_type != 'raw' or '/upload/' not in url:
+    """Strip any Cloudinary transformation segments and return the clean delivery URL."""
+    if not url or 'cloudinary.com' not in url or '/upload/' not in url:
         return url
-    url = url.replace('fl_attachment:false,fl_inline/', 'fl_inline/')
-    if '/upload/fl_inline/' in url:
-        return url
-    return url.replace('/upload/', '/upload/fl_inline/', 1)
+    import re
+    # Strip everything between /upload/ and the version (v123/) or the public_id.
+    # Transformation segments look like: fl_inline/, fl_attachment:false/, c_fill,w_200/, etc.
+    # They always contain _ or , and never start with 'v' followed by digits.
+    upload_split = url.split('/upload/', 1)
+    after = upload_split[1]  # e.g. 'fl_inline/v1234/folder/file.pdf'
+    parts = after.split('/')
+    # Drop leading parts that look like transformation segments
+    while parts and (
+        ('_' in parts[0] or ',' in parts[0])
+        and not re.match(r'^v\d+$', parts[0])
+    ):
+        parts = parts[1:]
+    return upload_split[0] + '/upload/' + '/'.join(parts)
 
 
 def _cloudinary_public_id_from_url(url: str, ext: str = '') -> str:
@@ -115,7 +125,8 @@ def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder:
             use_filename=False,
             overwrite=False,
         )
-        url = _cloudinary_inline_url(result.get('secure_url') or '', resource_type)
+        # Store the clean secure_url — no transformations, proxy handles Content-Disposition
+        url = result.get('secure_url') or ''
         return {
             'url': url,
             'public_id': result.get('public_id') or public_id,
@@ -821,14 +832,19 @@ class FileProxyView(APIView):
         except StudyMaterial.DoesNotExist:
             return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        file_url = _cloudinary_inline_url(material.file_url, 'raw') if material.file_url else ''
+        file_url = material.file_url or ''
         if not file_url:
             return Response({'error': 'No file URL'}, status=status.HTTP_404_NOT_FOUND)
+
+        # For Cloudinary raw resources, strip any transformations so the server-side
+        # fetch gets the original bytes (fl_inline is browser-only and causes 401 server-side).
+        if 'cloudinary.com' in file_url:
+            file_url = _cloudinary_inline_url(file_url, 'raw')
 
         try:
             import requests as _req
             from django.http import StreamingHttpResponse
-            resp = _req.get(file_url, stream=True, timeout=30)
+            resp = _req.get(file_url, stream=True, timeout=60, allow_redirects=True)
             resp.raise_for_status()
             guessed = mimetypes.guess_type(material.file_name or '')[0]
             content_type = resp.headers.get('Content-Type') or guessed or 'application/octet-stream'
@@ -842,6 +858,7 @@ class FileProxyView(APIView):
             )
             streaming['Content-Disposition'] = f'{disposition}; filename="{filename}"'
             streaming['X-Frame-Options'] = 'SAMEORIGIN'
+            streaming['X-Content-Type-Options'] = 'nosniff'
             streaming['Access-Control-Allow-Origin'] = '*'
             return streaming
         except Exception as e:

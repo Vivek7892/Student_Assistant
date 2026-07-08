@@ -74,7 +74,8 @@ export default function Documents() {
     if (token) params.set('token', token)
     if (download) params.set('download', '1')
     const suffix = params.toString()
-    return `/api/files/proxy/${material.id}/${suffix ? `?${suffix}` : ''}`
+    const base = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+    return `${base}/api/files/proxy/${material.id}/${suffix ? `?${suffix}` : ''}`
   }
 
   return (

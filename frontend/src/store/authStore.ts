@@ -25,8 +25,7 @@ interface AuthStore {
   refreshAccessToken: () => Promise<string | null>
 }
 
-// Use empty baseURL so requests go through Vite's proxy (/api → localhost:8000)
-const authApi = axios.create({ baseURL: '' })
+const authApi = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? '' })
 
 async function post(path: string, body: object) {
   try {
