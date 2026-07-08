@@ -1,6 +1,3 @@
-import pymysql
-pymysql.install_as_MySQLdb()
-
 import os
 from django.core.management import execute_from_command_line
 
