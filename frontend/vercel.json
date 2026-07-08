@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://eduai-backend.onrender.com/api/$1"
+      "destination": "https://student-assistant-980q.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",

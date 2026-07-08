@@ -152,7 +152,7 @@ A `render.yaml` is included for one-click Render deployment.
    - `GEMINI_API_KEY`, `MONGO_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`
    - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-4. Update `CORS_ALLOWED_ORIGINS` and `FRONTEND_URL` to your actual frontend URL
+4. Confirm `CORS_ALLOWED_ORIGINS` and `FRONTEND_URL` point to `https://student-assistant-a2i8.vercel.app`
 
 ---
 
@@ -186,7 +186,7 @@ A `render.yaml` is included for one-click Render deployment.
 |----------|-------------|
 | `VITE_API_URL` | Backend URL (empty = nginx proxy in Docker) |
 | `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `VITE_GOOGLE_DRIVE_REDIRECT_URI` | Exact Google Drive OAuth redirect URI, e.g. `http://localhost:5173/drive-callback` |
+| `VITE_GOOGLE_DRIVE_REDIRECT_URI` | Exact Google Drive OAuth redirect URI, e.g. `https://student-assistant-a2i8.vercel.app/drive-callback` |
 | `VITE_YOUTUBE_API_KEY` | YouTube Data API v3 key |
 | `VITE_FIREBASE_*` | Firebase config (password reset emails) |
 
@@ -197,7 +197,7 @@ add every redirect URI your frontend will send:
 
 - Local dev: `http://localhost:5173/drive-callback`
 - Local dev alternative: `http://127.0.0.1:5173/drive-callback`
-- Production: `https://your-frontend-domain.com/drive-callback`
+- Production: `https://student-assistant-a2i8.vercel.app/drive-callback`
 
 Set `VITE_GOOGLE_DRIVE_REDIRECT_URI` to one of those exact values. Google requires
 an exact match, including protocol, host, port, and path.
