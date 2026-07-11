@@ -3,11 +3,13 @@ import uuid
 import mimetypes
 import requests
 from urllib.parse import urlparse
+from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.utils import timezone
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.utils.text import get_valid_filename
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -794,6 +796,7 @@ class AwardXPView(APIView):
 
 # ── File Proxy (serves Cloudinary/remote files through Django to avoid CORS) ──
 
+@method_decorator(xframe_options_exempt, name='dispatch')
 class FileProxyView(APIView):
     """
     GET /api/files/proxy/<material_id>/
@@ -857,7 +860,12 @@ class FileProxyView(APIView):
                 content_type=content_type,
             )
             streaming['Content-Disposition'] = f'{disposition}; filename="{filename}"'
-            streaming['X-Frame-Options'] = 'SAMEORIGIN'
+            frontend_url = getattr(settings, 'FRONTEND_URL', '').rstrip('/')
+            frame_ancestors = ["'self'"]
+            if frontend_url:
+                frame_ancestors.append(frontend_url)
+            frame_ancestors.extend(['http://localhost:5173', 'http://127.0.0.1:5173'])
+            streaming['Content-Security-Policy'] = f"frame-ancestors {' '.join(frame_ancestors)}"
             streaming['X-Content-Type-Options'] = 'nosniff'
             streaming['Access-Control-Allow-Origin'] = '*'
             return streaming

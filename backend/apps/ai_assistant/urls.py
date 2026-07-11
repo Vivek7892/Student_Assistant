@@ -12,6 +12,7 @@ router.register('pomodoro-sessions', views.PomodoroSessionViewSet, basename='pom
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('chat/', views.ChatHealthView.as_view(), name='chat-health'),
     # chat must come before <str:pk>/ to avoid conflict
     path('sessions/chat/', views.ChatSessionViewSet.as_view({'post': 'chat'}), name='chat'),
     path('sessions/', views.ChatSessionViewSet.as_view({'get': 'list'}), name='chat-session-list'),

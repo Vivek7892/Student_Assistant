@@ -7,6 +7,7 @@ from django.conf import settings
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from .models import (
     ChatMessage, ChatSession, Goal, PomodoroSession, Quiz, QuizAttempt,
     Flashcard, StudyNote, StudyPlan, AIUsageLog,
@@ -224,6 +225,24 @@ class ChatSessionViewSet(viewsets.ViewSet):
         })
 
 
+class ChatHealthView(APIView):
+    """Lightweight smoke-test endpoint that never calls Gemini."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        return Response({
+            'response': 'Hello! How can I help you?',
+            'success': True,
+        })
+
+    def get(self, request):
+        return Response({
+            'response': 'Hello! How can I help you?',
+            'success': True,
+        })
+
+
 class QuizViewSet(viewsets.ModelViewSet):
     serializer_class = QuizSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
@@ -253,8 +272,18 @@ class QuizViewSet(viewsets.ModelViewSet):
 
         try:
             text = _read_material_text(mat)
+            if not text.strip():
+                return Response(
+                    {'error': 'Could not extract readable text from the uploaded document.'},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
             generated = gemini_rag.generate_quiz(text, data['num_questions'], data['difficulty'])
             questions = generated['items']
+            if not questions:
+                return Response(
+                    {'error': 'Gemini returned no quiz questions. Check your API key and document text.'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
             # subject is required by model — use material's subject or create a placeholder
             subject = mat.subject
@@ -375,8 +404,18 @@ class FlashcardViewSet(viewsets.ModelViewSet):
 
         try:
             text = _read_material_text(mat)
+            if not text.strip():
+                return Response(
+                    {'error': 'Could not extract readable text from the uploaded document.'},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
             generated = gemini_rag.generate_flashcards(text, data['num_cards'])
             cards = generated['items']
+            if not cards:
+                return Response(
+                    {'error': 'Gemini returned no flashcards. Check your API key and document text.'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
             subject = mat.subject
             if subject is None:
