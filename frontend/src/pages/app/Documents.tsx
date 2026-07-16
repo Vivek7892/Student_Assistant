@@ -23,6 +23,8 @@ export default function Documents() {
   const [uploading, setUploading] = useState(false)
   const [summary, setSummary] = useState('')
   const [viewer, setViewer] = useState<Material | null>(null)
+  const [viewerSrc, setViewerSrc] = useState('')
+  const [viewerLoading, setViewerLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const token = useAuth(state => state.token)
 
@@ -60,6 +62,10 @@ export default function Documents() {
   }
 
   async function summarize(id: string) {
+    if (!token) {
+      setSummary('Please sign in to summarize documents.')
+      return
+    }
     setSummary('Generating summary...')
     try {
       const res = await api.post('/api/ai/summarize/', { material_id: id })
@@ -76,6 +82,96 @@ export default function Documents() {
     const suffix = params.toString()
     const base = (import.meta.env.VITE_API_URL ?? window.location.origin).replace(/\/$/, '')
     return `${base}/api/files/proxy/${material.id}/${suffix ? `?${suffix}` : ''}`
+  }
+
+  function normalizeCloudinaryUrl(url: string) {
+    if (!url.includes('cloudinary.com') || !url.includes('/upload/')) return url
+    const [prefix, rest] = url.split('/upload/', 2)
+    const parts = rest.split('/').filter(Boolean)
+    while (parts.length > 0 && /[_.,:]/.test(parts[0]) && !/^v\d+$/.test(parts[0])) {
+      parts.shift()
+    }
+    return `${prefix}/upload/${parts.join('/')}`
+  }
+
+  function directFileUrl(material: Material) {
+    return normalizeCloudinaryUrl(material.file_url)
+  }
+
+  useEffect(() => {
+    let revoked = false
+    let currentObjectUrl = ''
+
+    async function loadViewer() {
+      if (!viewer || !canPreview(viewer)) {
+        setViewerSrc('')
+        setViewerLoading(false)
+        return
+      }
+
+      setViewerLoading(true)
+      setViewerSrc('')
+
+      try {
+        const response = await api.get(`/api/files/proxy/${viewer.id}/`, {
+          responseType: 'blob',
+        })
+        const blob = response.data as Blob
+        if (revoked) return
+
+        currentObjectUrl = URL.createObjectURL(blob)
+        setViewerSrc(currentObjectUrl)
+      } catch {
+        if (revoked) return
+
+        try {
+          const fallbackResponse = await fetch(directFileUrl(viewer))
+          if (!fallbackResponse.ok) throw new Error('fallback failed')
+          const blob = await fallbackResponse.blob()
+          if (revoked) return
+
+          currentObjectUrl = URL.createObjectURL(blob)
+          setViewerSrc(currentObjectUrl)
+        } catch {
+          if (!revoked) setViewerSrc('')
+        }
+      } finally {
+        if (!revoked) setViewerLoading(false)
+      }
+    }
+
+    loadViewer()
+
+    return () => {
+      revoked = true
+      setViewerLoading(false)
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl)
+      setViewerSrc('')
+    }
+  }, [viewer, token])
+
+  function canPreview(material: Material) {
+    return ['pdf', 'txt'].includes((material.file_type || '').toLowerCase())
+  }
+
+  async function downloadMaterial(material: Material) {
+    try {
+      const response = await api.get(`/api/files/proxy/${material.id}/`, {
+        responseType: 'blob',
+        params: { download: '1' },
+      })
+      const blob = response.data as Blob
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = material.file_name || `${material.title}.${material.file_type || 'bin'}`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      } catch {
+      window.open(directFileUrl(material), '_blank', 'noopener,noreferrer')
+    }
   }
 
   return (
@@ -100,7 +196,7 @@ export default function Documents() {
               <p className="truncate text-xs text-[var(--text-3)]">{viewer.file_name}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => window.open(proxyUrl(viewer, true), '_blank', 'noopener,noreferrer')}>
+              <Button size="sm" variant="secondary" onClick={() => downloadMaterial(viewer)}>
                 <Download size={13} /> Download
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setViewer(null)}>
@@ -108,11 +204,33 @@ export default function Documents() {
               </Button>
             </div>
           </div>
-          <iframe
-            title={viewer.title}
-            src={proxyUrl(viewer)}
-            className="h-[72vh] w-full bg-white"
-          />
+          {canPreview(viewer) ? (
+            viewerLoading ? (
+              <div className="flex min-h-[72vh] items-center justify-center bg-white text-sm text-[var(--text-3)]">
+                Loading preview...
+              </div>
+            ) : viewerSrc ? (
+              <iframe
+                title={viewer.title}
+                src={viewerSrc}
+                className="h-[72vh] w-full bg-white"
+              />
+            ) : (
+              <div className="flex min-h-[72vh] items-center justify-center bg-[var(--surface-2)] text-sm text-[var(--text-3)]">
+                Preview unavailable. Use download instead.
+              </div>
+            )
+          ) : (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 bg-[var(--surface-2)] p-6 text-center">
+              <FileText size={36} className="text-[var(--text-3)]" />
+              <p className="max-w-md text-sm text-[var(--text-2)]">
+                This file type cannot be previewed directly in the browser. Download it to open it with your document app.
+              </p>
+              <Button variant="gradient" onClick={() => downloadMaterial(viewer)}>
+                <Download size={14} /> Download
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 

@@ -1,18 +1,51 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
-from .models import User, StudentProfile, TeacherProfile, UserPreferences
+from .models import (
+    User, UserRole, Skill, Achievement, Interest,
+    ActivityLog, UserSettings, StudentProfile, UserPreferences,
+)
+
+
+class UserRoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserRole
+        fields = ['role']
+
+
+class SkillSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Skill
+        fields = ['id', 'name', 'level']
+
+
+class AchievementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Achievement
+        fields = ['id', 'title', 'description', 'icon', 'earned_at']
+
+
+class InterestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Interest
+        fields = ['id', 'topic']
+
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityLog
+        fields = ['id', 'action', 'metadata', 'created_at']
+
+
+class UserSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserSettings
+        exclude = ['user', 'id']
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentProfile
-        exclude = ['user']
-
-
-class TeacherProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TeacherProfile
         exclude = ['user']
 
 
@@ -23,16 +56,25 @@ class UserPreferencesSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(read_only=True)
+    first_name = serializers.CharField(read_only=True)
+    last_name = serializers.CharField(read_only=True)
+    roles = UserRoleSerializer(many=True, read_only=True)
+    skills = SkillSerializer(many=True, read_only=True)
+    achievements = AchievementSerializer(many=True, read_only=True)
+    interests = InterestSerializer(many=True, read_only=True)
+    settings = UserSettingsSerializer(read_only=True)
     student_profile = StudentProfileSerializer(read_only=True)
     preferences = UserPreferencesSerializer(read_only=True)
-    full_name = serializers.ReadOnlyField()
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'avatar', 'is_verified', 'oauth_provider',
-            'created_at', 'student_profile', 'preferences',
+            'id', 'email', 'full_name', 'first_name', 'last_name', 'role', 'avatar', 'bio',
+            'university', 'major', 'year', 'timezone',
+            'is_verified', 'oauth_provider', 'created_at',
+            'roles', 'skills', 'achievements', 'interests',
+            'settings', 'student_profile', 'preferences',
         ]
         read_only_fields = ['id', 'created_at', 'is_verified', 'oauth_provider']
 
@@ -40,11 +82,10 @@ class UserSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True)
-    role = serializers.ChoiceField(choices=['student', 'admin'], default='student')
 
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name', 'password', 'confirm_password', 'role']
+        fields = ['email', 'full_name', 'password', 'confirm_password']
 
     def validate(self, data):
         if data['password'] != data.pop('confirm_password'):
@@ -52,10 +93,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        StudentProfile.objects.create(user=user)
-        UserPreferences.objects.create(user=user)
-        return user
+        return User.objects.create_user(**validated_data)
 
 
 class LoginSerializer(serializers.Serializer):
@@ -82,13 +120,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
+class UpdateProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['full_name', 'bio', 'university', 'major', 'year', 'timezone']
+
+
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, min_length=8)
 
     def validate_old_password(self, value):
-        user = self.context['request'].user
-        if not user.check_password(value):
+        if not self.context['request'].user.check_password(value):
             raise serializers.ValidationError('Old password is incorrect')
         return value
 
@@ -106,24 +149,3 @@ class ResetPasswordSerializer(serializers.Serializer):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
         return data
-
-
-class UpdateProfileSerializer(serializers.ModelSerializer):
-    student_profile = StudentProfileSerializer(required=False)
-
-    class Meta:
-        model = User
-        fields = ['first_name', 'last_name', 'avatar', 'student_profile']
-
-    def update(self, instance, validated_data):
-        student_data = validated_data.pop('student_profile', None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        if student_data is not None:
-            student_profile, _ = StudentProfile.objects.get_or_create(user=instance)
-            for attr, value in student_data.items():
-                setattr(student_profile, attr, value)
-            student_profile.save()
-        return instance

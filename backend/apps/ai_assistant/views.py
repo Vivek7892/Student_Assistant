@@ -40,6 +40,28 @@ def _assert_material_access(material_id, user):
     return mat, None
 
 
+def _drive_file_id_from_url(url: str) -> str:
+    from urllib.parse import urlparse, parse_qs
+
+    if not url or 'drive.google.com' not in url:
+        return ''
+    try:
+        parsed = urlparse(url)
+        query_id = parse_qs(parsed.query).get('id', [''])[0]
+        if query_id:
+            return query_id
+
+        parts = [part for part in parsed.path.split('/') if part]
+        for index, part in enumerate(parts):
+            if part in {'d', 'file', 'uc'} and index + 1 < len(parts):
+                candidate = parts[index + 1]
+                if candidate and candidate != 'view':
+                    return candidate
+        return ''
+    except Exception:
+        return ''
+
+
 def _read_material_text(mat) -> str:
     """Read text from a StudyMaterial — tries local file first, falls back to URL download."""
     import os, tempfile, requests as req
@@ -59,6 +81,31 @@ def _read_material_text(mat) -> str:
                 local_path = candidate
 
     if local_path is None:
+        drive_file_id = getattr(mat, 'drive_file_id', '') or _drive_file_id_from_url(mat.file_url)
+        if drive_file_id:
+            try:
+                from apps.files.models import GoogleDriveToken
+                from apps.files.views import _get_valid_access_token, GOOGLE_DRIVE_FILES_URL
+
+                token_obj = GoogleDriveToken.objects.filter(user=mat.uploaded_by).first()
+                if token_obj:
+                    access_token = _get_valid_access_token(token_obj)
+                    if access_token:
+                        response = req.get(
+                            f'{GOOGLE_DRIVE_FILES_URL}/{drive_file_id}',
+                            params={'alt': 'media', 'acknowledgeAbuse': 'true'},
+                            headers={'Authorization': f'Bearer {access_token}'},
+                            timeout=60,
+                        )
+                        response.raise_for_status()
+                        ext = f'.{mat.file_type.lower()}'
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                            tmp.write(response.content)
+                            local_path = tmp.name
+            except Exception:
+                local_path = None
+
+    if local_path is None:
         # Fall back to HTTP download
         response = req.get(mat.file_url, timeout=60)
         response.raise_for_status()
@@ -68,6 +115,18 @@ def _read_material_text(mat) -> str:
             local_path = tmp.name
 
     return doc_processor.extract_text(local_path)
+
+
+def _user_material_collections(user) -> list[str]:
+    """Return collections that may contain this user's uploaded study material."""
+    qs = StudyMaterial.objects.filter(uploaded_by=user, is_processed=True).exclude(vector_collection_id__isnull=True)
+    names = [f'user_{user.id}']
+    seen = set(names)
+    for name in qs.order_by('-created_at').values_list('vector_collection_id', flat=True)[:20]:
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
 
 
 class ChatSessionViewSet(viewsets.ViewSet):
@@ -164,20 +223,21 @@ class ChatSessionViewSet(viewsets.ViewSet):
             sources=[],
         )
 
+        collection_names = []
         if material_id:
             mat, err = _assert_material_access(material_id, request.user)
             if err:
                 return err
-            collection_name = mat.vector_collection_id if mat.is_processed else f'user_{request.user.id}'
+            collection_names = [mat.vector_collection_id] if mat.is_processed and mat.vector_collection_id else [f'user_{request.user.id}']
         elif subject_id:
-            collection_name = f'subject_{subject_id}'
+            collection_names = [f'subject_{subject_id}']
         else:
-            collection_name = f'user_{request.user.id}'
+            collection_names = _user_material_collections(request.user)
 
         try:
-            result = gemini_rag.query(
+            result = gemini_rag.query_collections(
                 question=message,
-                collection_name=collection_name,
+                collection_names=collection_names,
                 chat_history=history,
                 language=language,
             )
@@ -545,6 +605,9 @@ class PomodoroSessionViewSet(viewsets.ModelViewSet):
 class SummarizeView(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def summarize(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
         serializer = SummarizeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

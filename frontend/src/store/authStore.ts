@@ -8,7 +8,7 @@ interface User {
   first_name: string
   last_name: string
   full_name: string
-  role: 'student' | 'admin'
+  role: 'student' | 'instructor' | 'admin'
   avatar?: string
   is_verified: boolean
   student_profile?: { streak: number; xp: number; level: number }
@@ -72,12 +72,10 @@ export const useAuth = create<AuthStore>()(
       },
 
       register: async (name, email, password) => {
-        const [first_name, ...rest] = name.trim().split(' ')
-        const last_name = rest.join(' ') || '.'
         set({ user: null, token: null, refreshToken: null, isAuthenticated: false })
         try {
           const data = await post('/api/auth/register/', {
-            first_name, last_name, email, password, confirm_password: password, role: 'student',
+            full_name: name.trim(), email, password, confirm_password: password,
           })
           set({ token: data.tokens.access, refreshToken: data.tokens.refresh, user: data.user, isAuthenticated: true })
         } catch (err: any) {

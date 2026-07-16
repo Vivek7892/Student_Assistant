@@ -161,20 +161,18 @@ export function Sidebar({ onClose }: SidebarProps) {
                         </motion.span>
                       )}
                     </AnimatePresence>
-                    {/* Drive icon for Documents */}
-                    {hasDrive && !isCollapsed && (
-                      <a
-                        href={DRIVE_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        title="Open Google Drive"
-                        className="opacity-0 group-hover/item:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-primary-500"
-                      >
-                        <HardDrive size={13} />
-                      </a>
-                    )}
                   </NavLink>
+                  {hasDrive && !isCollapsed && (
+                    <a
+                      href={DRIVE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open Google Drive"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 transition-opacity p-1 rounded hover:bg-[var(--surface-2)] text-[var(--text-3)] hover:text-primary-500"
+                    >
+                      <HardDrive size={13} />
+                    </a>
+                  )}
                 </div>
               )
             })}

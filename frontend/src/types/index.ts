@@ -5,7 +5,7 @@ export interface User {
   first_name: string
   last_name: string
   full_name: string
-  role: 'student' | 'teacher' | 'admin'
+  role: 'student' | 'teacher' | 'instructor' | 'admin'
   avatar?: string
   is_verified: boolean
   bio?: string

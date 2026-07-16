@@ -65,10 +65,10 @@ def google_oauth_callback(request):
         return Response({'error': 'Failed to fetch Google user info'}, status=status.HTTP_400_BAD_REQUEST)
 
     info = info_resp.json()
-    email      = info.get('email', '').lower()
-    first_name = info.get('given_name', '')
-    last_name  = info.get('family_name', '') or '.'
-    avatar     = info.get('picture', '')
+    email     = info.get('email', '').lower()
+    full_name = info.get('name') or ' '.join(
+        p for p in [info.get('given_name', ''), info.get('family_name', '')] if p
+    ).strip() or email.split('@')[0]
 
     if not email:
         return Response({'error': 'No email returned from Google'}, status=status.HTTP_400_BAD_REQUEST)
@@ -76,25 +76,23 @@ def google_oauth_callback(request):
     user, created = User.objects.get_or_create(
         email=email,
         defaults={
-            'first_name':     first_name,
-            'last_name':      last_name,
-            'avatar':         avatar,
+            'full_name':      full_name,
             'oauth_provider': 'google',
             'is_verified':    True,
         }
     )
 
     if not created:
-        # Update avatar / name if changed
+        # Update profile metadata if changed.
         updated = False
-        if avatar and user.avatar != avatar:
-            user.avatar = avatar; updated = True
+        if full_name and not user.full_name:
+            user.full_name = full_name; updated = True
         if not user.oauth_provider:
             user.oauth_provider = 'google'; updated = True
         if not user.is_verified:
             user.is_verified = True; updated = True
         if updated:
-            user.save(update_fields=['avatar', 'oauth_provider', 'is_verified'])
+            user.save(update_fields=['full_name', 'oauth_provider', 'is_verified'])
 
     from apps.accounts.serializers import UserSerializer
     return Response({

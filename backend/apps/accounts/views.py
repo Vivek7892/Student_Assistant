@@ -1,33 +1,33 @@
 from django.utils import timezone
 from datetime import timedelta
-from rest_framework import status, generics, permissions
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import status, generics, permissions, parsers
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenRefreshView
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import EmailVerificationToken, PasswordResetToken
+
+from .models import (
+    EmailVerificationToken, PasswordResetToken,
+    Skill, Achievement, Interest, ActivityLog, UserSettings, UserPreferences,
+)
 from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     ChangePasswordSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer, UpdateProfileSerializer,
-    CustomTokenObtainPairSerializer, UserPreferencesSerializer
+    SkillSerializer, AchievementSerializer, InterestSerializer,
+    ActivityLogSerializer, UserSettingsSerializer, UserPreferencesSerializer,
 )
 
 User = get_user_model()
 
 
-def get_tokens_for_user(user):
+def _tokens(user):
     refresh = RefreshToken.for_user(user)
     refresh['role'] = user.role
     refresh['email'] = user.email
     refresh['full_name'] = user.full_name
-    return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-    }
+    return {'refresh': str(refresh), 'access': str(refresh.access_token)}
 
 
 class RegisterView(generics.CreateAPIView):
@@ -35,27 +35,19 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        token_obj = EmailVerificationToken.objects.create(
-            user=user,
-            expires_at=timezone.now() + timedelta(hours=24)
+        s = self.get_serializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.save()
+        tok = EmailVerificationToken.objects.create(
+            user=user, expires_at=timezone.now() + timedelta(hours=24)
         )
-        verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token_obj.token}"
         send_mail(
             'Verify your email',
-            f'Click to verify your email: {verify_url}',
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=True,
+            f'{settings.FRONTEND_URL}/verify-email?token={tok.token}',
+            settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=True,
         )
-        tokens = get_tokens_for_user(user)
-        return Response({
-            'user': UserSerializer(user).data,
-            'tokens': tokens,
-            'message': 'Registration successful. Please verify your email.'
-        }, status=status.HTTP_201_CREATED)
+        return Response({'user': UserSerializer(user).data, 'tokens': _tokens(user)},
+                        status=status.HTTP_201_CREATED)
 
 
 class LoginView(generics.GenericAPIView):
@@ -63,23 +55,17 @@ class LoginView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
-        tokens = get_tokens_for_user(user)
-        return Response({
-            'user': UserSerializer(user).data,
-            'tokens': tokens,
-        })
+        s = self.get_serializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        user = s.validated_data['user']
+        return Response({'user': UserSerializer(user).data, 'tokens': _tokens(user)})
 
 
 class LogoutView(generics.GenericAPIView):
     def post(self, request):
         try:
-            refresh_token = request.data.get('refresh')
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response({'message': 'Logged out successfully'})
+            RefreshToken(request.data.get('refresh')).blacklist()
+            return Response({'message': 'Logged out'})
         except Exception:
             return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -90,34 +76,120 @@ class MeView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
-    def put(self, request, *args, **kwargs):
-        serializer = UpdateProfileSerializer(
-            request.user, data=request.data, partial=True, context={'request': request}
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+    def patch(self, request, *args, **kwargs):
+        s = UpdateProfileSerializer(request.user, data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
         return Response(UserSerializer(request.user).data)
 
+    put = patch
+
+
+class AvatarUploadView(generics.GenericAPIView):
+    parser_classes = [parsers.MultiPartParser]
+
+    def post(self, request):
+        file = request.FILES.get('avatar')
+        if not file:
+            return Response({'error': 'No file'}, status=400)
+        request.user.avatar = file
+        request.user.save(update_fields=['avatar'])
+        return Response({'avatar': request.build_absolute_uri(request.user.avatar.url)})
+
+
+class SkillViewSet(generics.ListCreateAPIView):
+    serializer_class = SkillSerializer
+
+    def get_queryset(self):
+        return Skill.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class SkillDetailView(generics.DestroyAPIView):
+    serializer_class = SkillSerializer
+
+    def get_queryset(self):
+        return Skill.objects.filter(user=self.request.user)
+
+
+class InterestViewSet(generics.ListCreateAPIView):
+    serializer_class = InterestSerializer
+
+    def get_queryset(self):
+        return Interest.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class InterestDetailView(generics.DestroyAPIView):
+    serializer_class = InterestSerializer
+
+    def get_queryset(self):
+        return Interest.objects.filter(user=self.request.user)
+
+
+class AchievementListView(generics.ListAPIView):
+    serializer_class = AchievementSerializer
+
+    def get_queryset(self):
+        return Achievement.objects.filter(user=self.request.user)
+
+
+class ActivityListView(generics.ListAPIView):
+    serializer_class = ActivityLogSerializer
+
+    def get_queryset(self):
+        return ActivityLog.objects.filter(user=self.request.user)
+
+
+class SettingsView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserSettingsSerializer
+
+    def get_object(self):
+        obj, _ = UserSettings.objects.get_or_create(user=self.request.user)
+        return obj
+
     def patch(self, request, *args, **kwargs):
-        return self.put(request, *args, **kwargs)
+        obj = self.get_object()
+        s = self.get_serializer(obj, data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
+        # sync timezone to user
+        if 'timezone' in request.data:
+            request.user.timezone = request.data['timezone']
+            request.user.save(update_fields=['timezone'])
+        return Response(s.data)
+
+    put = patch
+
+
+class DeleteAccountView(generics.DestroyAPIView):
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        user.is_active = False
+        user.email = f'deleted_{user.id}@deleted.invalid'
+        user.save(update_fields=['is_active', 'email'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class VerifyEmailView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        token = request.data.get('token')
         try:
-            token_obj = EmailVerificationToken.objects.get(token=token, is_used=False)
-            if token_obj.expires_at < timezone.now():
-                return Response({'error': 'Token expired'}, status=status.HTTP_400_BAD_REQUEST)
-            token_obj.user.is_verified = True
-            token_obj.user.save()
-            token_obj.is_used = True
-            token_obj.save()
-            return Response({'message': 'Email verified successfully'})
+            tok = EmailVerificationToken.objects.get(token=request.data.get('token'), is_used=False)
+            if tok.expires_at < timezone.now():
+                return Response({'error': 'Token expired'}, status=400)
+            tok.user.is_verified = True
+            tok.user.save()
+            tok.is_used = True
+            tok.save()
+            return Response({'message': 'Email verified'})
         except EmailVerificationToken.DoesNotExist:
-            return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid token'}, status=400)
 
 
 class ForgotPasswordView(generics.GenericAPIView):
@@ -125,22 +197,17 @@ class ForgotPasswordView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data['email']
+        s = self.get_serializer(data=request.data)
+        s.is_valid(raise_exception=True)
         try:
-            user = User.objects.get(email=email)
-            token_obj = PasswordResetToken.objects.create(
-                user=user,
-                expires_at=timezone.now() + timedelta(hours=1)
+            user = User.objects.get(email=s.validated_data['email'])
+            tok = PasswordResetToken.objects.create(
+                user=user, expires_at=timezone.now() + timedelta(hours=1)
             )
-            reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token_obj.token}"
             send_mail(
                 'Reset your password',
-                f'Click to reset your password: {reset_url}',
-                settings.DEFAULT_FROM_EMAIL,
-                [user.email],
-                fail_silently=True,
+                f'{settings.FRONTEND_URL}/reset-password?token={tok.token}',
+                settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=True,
             )
         except User.DoesNotExist:
             pass
@@ -152,48 +219,45 @@ class ResetPasswordView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        s = self.get_serializer(data=request.data)
+        s.is_valid(raise_exception=True)
         try:
-            token_obj = PasswordResetToken.objects.get(
-                token=serializer.validated_data['token'], is_used=False
-            )
-            if token_obj.expires_at < timezone.now():
-                return Response({'error': 'Token expired'}, status=status.HTTP_400_BAD_REQUEST)
-            token_obj.user.set_password(serializer.validated_data['new_password'])
-            token_obj.user.save()
-            token_obj.is_used = True
-            token_obj.save()
+            tok = PasswordResetToken.objects.get(token=s.validated_data['token'], is_used=False)
+            if tok.expires_at < timezone.now():
+                return Response({'error': 'Token expired'}, status=400)
+            tok.user.set_password(s.validated_data['new_password'])
+            tok.user.save()
+            tok.is_used = True
+            tok.save()
             return Response({'message': 'Password reset successfully'})
         except PasswordResetToken.DoesNotExist:
-            return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid token'}, status=400)
 
 
 class ChangePasswordView(generics.GenericAPIView):
     serializer_class = ChangePasswordSerializer
 
     def post(self, request):
-        serializer = self.get_serializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        request.user.set_password(serializer.validated_data['new_password'])
+        s = self.get_serializer(data=request.data, context={'request': request})
+        s.is_valid(raise_exception=True)
+        request.user.set_password(s.validated_data['new_password'])
         request.user.save()
-        return Response({'message': 'Password changed successfully'})
+        return Response({'message': 'Password changed'})
 
 
 class PreferencesView(generics.RetrieveUpdateAPIView):
     serializer_class = UserPreferencesSerializer
 
     def get_object(self):
-        from .models import UserPreferences
-        prefs, _ = UserPreferences.objects.get_or_create(user=self.request.user)
-        return prefs
+        obj, _ = UserPreferences.objects.get_or_create(user=self.request.user)
+        return obj
 
     def put(self, request, *args, **kwargs):
         return self.patch(request, *args, **kwargs)
 
     def patch(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        obj = self.get_object()
+        s = self.get_serializer(obj, data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response(s.data)

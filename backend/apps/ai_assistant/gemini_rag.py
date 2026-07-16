@@ -289,6 +289,40 @@ ANSWER:"""
     def query(self, question: str, collection_name: str,
               chat_history: list = None, language: str = 'english') -> dict:
         context, sources = self._retrieve_context(question, collection_name)
+        return self._answer_with_context(question, context, sources, chat_history, language)
+
+    def query_collections(self, question: str, collection_names: list[str],
+                          chat_history: list = None, language: str = 'english') -> dict:
+        """Query several Chroma collections and answer from the combined context."""
+        context_parts, sources, total_tokens, seen = [], [], 0, set()
+        for collection_name in collection_names:
+            context, collection_sources = self._retrieve_context(question, collection_name)
+            if not context:
+                continue
+            tokens = count_tokens(context)
+            if total_tokens + tokens > self.MAX_CONTEXT_TOKENS:
+                context = truncate_to_tokens(context, self.MAX_CONTEXT_TOKENS - total_tokens)
+                tokens = count_tokens(context)
+            context_parts.append(context)
+            total_tokens += tokens
+            for source in collection_sources:
+                key = (source.get('content') or '')[:100]
+                if key and key not in seen:
+                    seen.add(key)
+                    sources.append(source)
+            if total_tokens >= self.MAX_CONTEXT_TOKENS:
+                break
+
+        return self._answer_with_context(
+            question,
+            '\n\n---\n\n'.join(context_parts),
+            sources,
+            chat_history,
+            language,
+        )
+
+    def _answer_with_context(self, question: str, context: str, sources: list[dict],
+                             chat_history: list = None, language: str = 'english') -> dict:
 
         history_text = '\n'.join(
             f'Student: {u}\nTutor: {a}' for u, a in (chat_history or [])

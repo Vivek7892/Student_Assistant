@@ -38,14 +38,17 @@ export class ErrorBoundary extends React.Component<
 // ── ProtectedRoute ────────────────────────────────────────────────────────────
 interface ProtectedRouteProps {
   children: React.ReactNode
-  roles?: Array<'student' | 'teacher' | 'admin'>
+  roles?: Array<'student' | 'teacher' | 'instructor' | 'admin'>
 }
 
 export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuth()
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (roles && user && !roles.includes(user.role)) return <Navigate to="/app" replace />
+  if (roles && user) {
+    const role = user.role === 'instructor' ? 'teacher' : user.role
+    if (!roles.includes(role)) return <Navigate to="/app" replace />
+  }
 
   return <>{children}</>
 }

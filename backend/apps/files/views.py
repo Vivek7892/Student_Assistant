@@ -2,12 +2,13 @@ import os
 import uuid
 import mimetypes
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from django.utils.decorators import method_decorator
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.http import FileResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.utils.text import get_valid_filename
@@ -108,6 +109,49 @@ def _cloudinary_public_id_from_url(url: str, ext: str = '') -> str:
         return ''
 
 
+def _cloudinary_signed_delivery_url(file_url: str, file_name: str = '', file_type: str = '') -> str:
+    """Build a private Cloudinary download URL for assets that reject anonymous fetches."""
+    if not file_url or 'cloudinary.com' not in file_url:
+        return file_url
+    try:
+        import cloudinary.utils
+        ext = os.path.splitext(file_name or urlparse(file_url).path)[1].lower() or f'.{(file_type or '').lower()}'
+        resource_type = CLOUDINARY_RESOURCE_TYPE.get(ext.lower(), 'raw')
+        public_id = _cloudinary_public_id_from_url(file_url, ext)
+        if not public_id:
+            return file_url
+        private_url = cloudinary.utils.private_download_url(
+            public_id,
+            ext.lstrip('.') or 'bin',
+            resource_type=resource_type,
+            type='upload',
+            attachment=True,
+        )
+        return private_url or file_url
+    except Exception:
+        return file_url
+
+
+def _drive_file_id_from_url(url: str) -> str:
+    if not url or 'drive.google.com' not in url:
+        return ''
+    try:
+        parsed = urlparse(url)
+        query_id = parse_qs(parsed.query).get('id', [''])[0]
+        if query_id:
+            return query_id
+
+        parts = [part for part in parsed.path.split('/') if part]
+        for index, part in enumerate(parts):
+            if part in {'d', 'file', 'uc'} and index + 1 < len(parts):
+                candidate = parts[index + 1]
+                if candidate and candidate != 'view':
+                    return candidate
+        return ''
+    except Exception:
+        return ''
+
+
 def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder: str = 'student_assistant') -> dict | None:
     """
     Upload bytes to Cloudinary. Returns Cloudinary metadata or None on failure.
@@ -138,6 +182,19 @@ def _upload_to_cloudinary(file_content: bytes, file_name: str, ext: str, folder:
         import logging
         logging.getLogger(__name__).warning(f'[Cloudinary] upload failed: {e}')
         return None
+
+
+def _remote_file_deliverable(url: str) -> bool:
+    """Return True only when a remote file URL can actually be fetched."""
+    if not url:
+        return False
+    try:
+        resp = requests.get(url, stream=True, timeout=15, allow_redirects=True)
+        ok = 200 <= resp.status_code < 300
+        resp.close()
+        return ok
+    except Exception:
+        return False
 
 
 def _delete_from_cloudinary(public_id: str, ext: str):
@@ -303,10 +360,15 @@ def _process_material_sync(material, local_file_path: str | None = None):
                 path = tmp.name
         text             = doc_processor.extract_text(path)
         collection_name  = f'material_{material.id}'
-        rag.index_document(text, collection_name, {
+        metadata = {
             'material_id': str(material.id),
             'title':       material.title,
-        })
+            'source':      material.title,
+            'file_name':   material.file_name,
+        }
+        rag.index_document(text, collection_name, metadata)
+        if material.uploaded_by_id:
+            rag.index_document(text, f'user_{material.uploaded_by_id}', metadata)
         material.is_processed        = True
         material.vector_collection_id = collection_name
         material.save(update_fields=['is_processed', 'vector_collection_id'])
@@ -346,8 +408,12 @@ class FileUploadView(APIView):
             folder=f'student_assistant/{request.user.id}'
         )
         if cloudinary_upload:
-            public_url   = cloudinary_upload['url']
-            storage_used = 'cloudinary'
+            if _remote_file_deliverable(_cloudinary_inline_url(cloudinary_upload['url'], 'raw')):
+                public_url   = cloudinary_upload['url']
+                storage_used = 'cloudinary'
+            else:
+                delete_cloudinary_file(cloudinary_upload['url'], file.name)
+                cloudinary_upload = None
 
         # ── 2. Try Drive if connected and Cloudinary not used ─────────────────
         if public_url is None:
@@ -839,35 +905,83 @@ class FileProxyView(APIView):
         if not file_url:
             return Response({'error': 'No file URL'}, status=status.HTTP_404_NOT_FOUND)
 
-        # For Cloudinary raw resources, strip any transformations so the server-side
-        # fetch gets the original bytes (fl_inline is browser-only and causes 401 server-side).
+        guessed = mimetypes.guess_type(material.file_name or '')[0] or 'application/octet-stream'
+        disposition = 'attachment' if request.query_params.get('download') == '1' else 'inline'
+        filename = get_valid_filename(material.file_name or f'document.{material.file_type or "bin"}')
+        response_headers = {
+            'Content-Disposition': f'{disposition}; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff',
+            'Access-Control-Allow-Origin': '*',
+        }
+        frontend_url = getattr(settings, 'FRONTEND_URL', '').rstrip('/')
+        frame_ancestors = ["'self'"]
+        if frontend_url:
+            frame_ancestors.append(frontend_url)
+        frame_ancestors.extend(['http://localhost:5173', 'http://127.0.0.1:5173'])
+        response_headers['Content-Security-Policy'] = f"frame-ancestors {' '.join(frame_ancestors)}"
+
+        local_path = _local_path_for(file_url)
+        if local_path:
+            try:
+                response = FileResponse(
+                    open(local_path, 'rb'),
+                    content_type=guessed,
+                    as_attachment=disposition == 'attachment',
+                    filename=filename,
+                )
+                for key, value in response_headers.items():
+                    response[key] = value
+                return response
+            except OSError:
+                pass
+
+        drive_file_id = material.drive_file_id or _drive_file_id_from_url(file_url)
+        if drive_file_id:
+            token_obj = GoogleDriveToken.objects.filter(user=material.uploaded_by).first()
+            if token_obj:
+                access_token = _get_valid_access_token(token_obj)
+                if access_token:
+                    try:
+                        drive_resp = requests.get(
+                            f'{GOOGLE_DRIVE_FILES_URL}/{drive_file_id}',
+                            params={'alt': 'media', 'acknowledgeAbuse': 'true'},
+                            headers={'Authorization': f'Bearer {access_token}'},
+                            stream=True,
+                            timeout=60,
+                            allow_redirects=True,
+                        )
+                        drive_resp.raise_for_status()
+                        content_type = drive_resp.headers.get('Content-Type') or guessed or 'application/octet-stream'
+                        if 'application/octet-stream' in content_type and guessed:
+                            content_type = guessed
+                        streaming = StreamingHttpResponse(
+                            drive_resp.iter_content(chunk_size=8192),
+                            content_type=content_type,
+                        )
+                        for key, value in response_headers.items():
+                            streaming[key] = value
+                        return streaming
+                    except Exception:
+                        pass
+
+        # For Cloudinary-backed assets, use a signed delivery URL so private/raw
+        # documents can still be fetched server-side.
         if 'cloudinary.com' in file_url:
-            file_url = _cloudinary_inline_url(file_url, 'raw')
+            file_url = _cloudinary_signed_delivery_url(file_url, material.file_name, material.file_type)
 
         try:
             import requests as _req
-            from django.http import StreamingHttpResponse
             resp = _req.get(file_url, stream=True, timeout=60, allow_redirects=True)
             resp.raise_for_status()
-            guessed = mimetypes.guess_type(material.file_name or '')[0]
             content_type = resp.headers.get('Content-Type') or guessed or 'application/octet-stream'
             if 'application/octet-stream' in content_type and guessed:
                 content_type = guessed
-            disposition = 'attachment' if request.query_params.get('download') == '1' else 'inline'
-            filename = get_valid_filename(material.file_name or f'document.{material.file_type or "bin"}')
             streaming = StreamingHttpResponse(
                 resp.iter_content(chunk_size=8192),
                 content_type=content_type,
             )
-            streaming['Content-Disposition'] = f'{disposition}; filename="{filename}"'
-            frontend_url = getattr(settings, 'FRONTEND_URL', '').rstrip('/')
-            frame_ancestors = ["'self'"]
-            if frontend_url:
-                frame_ancestors.append(frontend_url)
-            frame_ancestors.extend(['http://localhost:5173', 'http://127.0.0.1:5173'])
-            streaming['Content-Security-Policy'] = f"frame-ancestors {' '.join(frame_ancestors)}"
-            streaming['X-Content-Type-Options'] = 'nosniff'
-            streaming['Access-Control-Allow-Origin'] = '*'
+            for key, value in response_headers.items():
+                streaming[key] = value
             return streaming
         except Exception as e:
             import logging

@@ -16,45 +16,127 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('role', User.Role.ADMIN)
         extra_fields.setdefault('is_verified', True)
         return self.create_user(email, password, **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    class Role(models.TextChoices):
-        STUDENT = 'student', 'Student'
-        ADMIN = 'admin', 'Admin'
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
-    avatar = models.URLField(blank=True, null=True)
+    full_name = models.CharField(max_length=200)
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    bio = models.TextField(blank=True)
+    university = models.CharField(max_length=200, blank=True)
+    major = models.CharField(max_length=200, blank=True)
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    timezone = models.CharField(max_length=50, default='UTC')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
-    oauth_provider = models.CharField(max_length=50, blank=True, null=True)
+    oauth_provider = models.CharField(max_length=50, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
-
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['first_name', 'last_name']
+    REQUIRED_FIELDS = ['full_name']
 
     class Meta:
         db_table = 'users'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.email} ({self.role})'
+        return self.email
+
+    # Legacy compat
+    @property
+    def first_name(self):
+        parts = self.full_name.split(' ', 1)
+        return parts[0]
 
     @property
-    def full_name(self):
-        return f'{self.first_name} {self.last_name}'
+    def last_name(self):
+        parts = self.full_name.split(' ', 1)
+        return parts[1] if len(parts) > 1 else ''
 
+    @property
+    def role(self):
+        r = self.roles.filter(role=UserRole.Role.ADMIN).first()
+        if r:
+            return 'admin'
+        r = self.roles.filter(role=UserRole.Role.INSTRUCTOR).first()
+        if r:
+            return 'instructor'
+        return 'student'
+
+
+class UserRole(models.Model):
+    class Role(models.TextChoices):
+        STUDENT = 'student', 'Student'
+        INSTRUCTOR = 'instructor', 'Instructor'
+        ADMIN = 'admin', 'Admin'
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='roles')
+    role = models.CharField(max_length=20, choices=Role.choices)
+
+    class Meta:
+        db_table = 'user_roles'
+        unique_together = ['user', 'role']
+
+
+class Skill(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='skills')
+    name = models.CharField(max_length=100)
+    level = models.PositiveSmallIntegerField(default=1)  # 1-5
+
+    class Meta:
+        db_table = 'user_skills'
+
+
+class Achievement(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='achievements')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=100, blank=True)
+    earned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'user_achievements'
+        ordering = ['-earned_at']
+
+
+class Interest(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='interests')
+    topic = models.CharField(max_length=100)
+
+    class Meta:
+        db_table = 'user_interests'
+
+
+class ActivityLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='activity_logs')
+    action = models.CharField(max_length=200)
+    metadata = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'activity_logs'
+        ordering = ['-created_at']
+
+
+class UserSettings(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='settings')
+    theme = models.CharField(max_length=20, default='light')
+    language = models.CharField(max_length=10, default='en')
+    timezone = models.CharField(max_length=50, default='UTC')
+    notifications_enabled = models.BooleanField(default=True)
+    email_notifications = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'user_settings'
+
+
+# ── Legacy compat models (kept for existing migrations) ──────────────────────
 
 class StudentProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
